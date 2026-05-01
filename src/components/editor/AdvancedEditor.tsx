@@ -65,7 +65,7 @@ export function AdvancedEditor({
   const [searchTerm, setSearchTerm] = useState("");
   const [activeDialog, setActiveDialog] = useState<EditorDialog>(null);
   const [dialogSelection, setDialogSelection] = useState("");
-  const [articleEditor, setArticleEditor] = useState<Editor | null>(null);
+  const [articleEditor, setArticleEditor] = useState<any | null>(null);
   const [selectedArticleText, setSelectedArticleText] = useState("");
   const [title, setTitle] = useState(article?.title || "");
   const [excerpt, setExcerpt] = useState(article?.excerpt || "");
@@ -128,7 +128,7 @@ export function AdvancedEditor({
     return selectedArticleText || readBrowserSelection(fallback);
   }
 
-  function runArticleCommand(command: (editor: Editor) => void, fallbackHtml?: string) {
+  function runArticleCommand(command: (editor: any) => void, fallbackHtml?: string) {
     if (!articleEditor) {
       if (fallbackHtml) {
         const nextHtml = `${editorHtml}${fallbackHtml}`;
