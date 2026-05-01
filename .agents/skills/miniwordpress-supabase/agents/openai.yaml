@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mini WordPress Supabase"
+  short_description: "Configura schema, clone e verificacao"
+  default_prompt: "Use $miniwordpress-supabase to configure or verify the Mini WordPress database."
