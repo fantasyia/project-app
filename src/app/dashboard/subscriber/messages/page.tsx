@@ -8,7 +8,7 @@ export const metadata = { title: "Chat | Fantasyia" };
 export default async function MessagesPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ with?: string }> | { with?: string };
+  searchParams: Promise<{ with?: string }>;
 }) {
   const user = await getCurrentUser("subscriber");
   if (!user) {
@@ -27,10 +27,7 @@ export default async function MessagesPage({
 
   let conversations = await getConversations();
   let initialConversationId: string | null = null;
-  const resolvedSearchParams =
-    searchParams && typeof (searchParams as Promise<{ with?: string }>).then === "function"
-      ? await (searchParams as Promise<{ with?: string }>)
-      : (searchParams as { with?: string } | undefined);
+  const resolvedSearchParams = await searchParams;
   const targetUserId = resolvedSearchParams?.with?.trim();
 
   if (targetUserId && targetUserId !== user.id) {
