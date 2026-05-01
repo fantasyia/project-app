@@ -1,14 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
-import { resolveBaseRole } from "@/lib/auth/effective-role";
+import { resolveBaseRole } from "@/lib/auth/resolve-base-role";
 import { hasAccessTo, Role } from "@/lib/auth/roles";
 import {
   ACTIVE_ROLE_COOKIE,
   canAssumeRole,
   resolveActiveRole,
   roleRoutes,
-} from "@/lib/auth/role-session";
+} from "@/lib/auth/role-session-edge";
 
 function getRequestedDashboardRole(path: string): Role | null {
   if (path.startsWith("/dashboard/user")) return "subscriber";
