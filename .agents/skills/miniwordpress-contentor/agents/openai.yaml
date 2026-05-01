@@ -1,4 +1,0 @@
-interface:
-  display_name: "Mini WordPress Contentor"
-  short_description: "Integra Contentor, wp-json e tunnel"
-  default_prompt: "Use $miniwordpress-contentor to configure Contentor and WordPress adapter integration."
