@@ -59,7 +59,32 @@ ALTER TABLE "silos"
   ADD COLUMN IF NOT EXISTS "hero_image_alt" text,
   ADD COLUMN IF NOT EXISTS "pillar_content_json" jsonb,
   ADD COLUMN IF NOT EXISTS "pillar_content_html" text,
+  ADD COLUMN IF NOT EXISTS "show_in_navigation" boolean DEFAULT true,
   ADD COLUMN IF NOT EXISTS "updated_at" timestamp DEFAULT now();
+
+CREATE TABLE IF NOT EXISTS "silo_groups" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "silo_id" uuid NOT NULL REFERENCES "silos"("id") ON DELETE CASCADE,
+  "key" text NOT NULL,
+  "label" text NOT NULL,
+  "menu_order" integer DEFAULT 0,
+  "keywords" text[] DEFAULT '{}'::text[],
+  "created_at" timestamp DEFAULT now(),
+  "updated_at" timestamp DEFAULT now(),
+  UNIQUE ("silo_id", "key")
+);
+
+CREATE TABLE IF NOT EXISTS "silo_posts" (
+  "silo_id" uuid NOT NULL REFERENCES "silos"("id") ON DELETE CASCADE,
+  "article_id" uuid NOT NULL REFERENCES "blog_articles"("id") ON DELETE CASCADE,
+  "role" text DEFAULT 'SUPPORT',
+  "position" integer DEFAULT 0,
+  "level" integer DEFAULT 1,
+  "parent_article_id" uuid REFERENCES "blog_articles"("id") ON DELETE SET NULL,
+  "created_at" timestamp DEFAULT now(),
+  "updated_at" timestamp DEFAULT now(),
+  PRIMARY KEY ("silo_id", "article_id")
+);
 
 CREATE TABLE IF NOT EXISTS "post_links" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -209,6 +234,8 @@ FROM "blog_articles";
 CREATE INDEX IF NOT EXISTS "idx_blog_articles_silo_id" ON "blog_articles"("silo_id");
 CREATE INDEX IF NOT EXISTS "idx_blog_articles_status" ON "blog_articles"("status");
 CREATE INDEX IF NOT EXISTS "idx_blog_articles_target_keyword" ON "blog_articles"("target_keyword");
+CREATE INDEX IF NOT EXISTS "idx_silo_groups_silo_id" ON "silo_groups"("silo_id");
+CREATE INDEX IF NOT EXISTS "idx_silo_posts_article_id" ON "silo_posts"("article_id");
 CREATE INDEX IF NOT EXISTS "idx_post_links_source_article" ON "post_links"("source_article_id");
 CREATE INDEX IF NOT EXISTS "idx_post_link_occurrences_source_article" ON "post_link_occurrences"("source_article_id");
 CREATE INDEX IF NOT EXISTS "idx_silo_audits_silo_id" ON "silo_audits"("silo_id");

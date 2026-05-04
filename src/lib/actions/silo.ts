@@ -61,20 +61,6 @@ export async function createSilo(formData: FormData) {
 
   if (error) return { error: error.message };
 
-  // Auto-create 6 default editorial groups
-  const groups = [
-    { key: "estrategia_pricing", label: "Estratégia & Pricing", menu_order: 10, keywords: ["preço","plano","tier","receita"] },
-    { key: "guias_praticos", label: "Guias Práticos", menu_order: 20, keywords: ["como","tutorial","passo a passo","guia"] },
-    { key: "estudos_de_caso", label: "Estudos de Caso", menu_order: 30, keywords: ["case","resultado","exemplo","sucesso"] },
-    { key: "ferramentas", label: "Ferramentas & Recursos", menu_order: 40, keywords: ["ferramenta","app","recurso","plataforma"] },
-    { key: "tendencias", label: "Tendências & Análises", menu_order: 50, keywords: ["tendência","futuro","análise","mercado"] },
-    { key: "comunidade", label: "Comunidade & Engajamento", menu_order: 60, keywords: ["comunidade","fans","engajamento","retenção"] },
-  ];
-
-  await supabase.from("silo_groups").insert(
-    groups.map((g) => ({ silo_id: silo.id, ...g }))
-  );
-
   revalidatePath("/dashboard/blog");
   return { success: true, silo };
 }

@@ -1,65 +1,58 @@
+"use client";
+
 import { FileText } from "lucide-react";
-import type { ArticleHeading } from "@/lib/miniwordpress/article-analysis";
-import { GuardianPanel } from "./GuardianPanel";
-import { InternalLinksPanel } from "./InternalLinksPanel";
-import { LinkHygienePanel } from "./LinkHygienePanel";
-import { TermsPanel } from "./TermsPanel";
+import { useEditorContext } from "@/components/editor/EditorContext";
+import { GuardianPanel } from "@/components/editor/GuardianPanel";
+import { TermsPanel } from "@/components/editor/TermsPanel";
+import { LinkHygienePanel } from "@/components/editor/LinkHygienePanel";
+import { InternalLinksPanel } from "@/components/editor/InternalLinksPanel";
+import { TextSearchPanel } from "@/components/editor/TextSearchPanel";
 
-export function ContentIntelligence({
-  headings,
-  seoChecks,
-  selectedSiloName,
-  searchPanel,
-  onAddTerm,
-  onOpenLinkDialog,
-  onImproveText,
-}: {
-  headings: ArticleHeading[];
-  seoChecks: Array<{ label: string; ok: boolean }>;
-  selectedSiloName?: string | null;
-  searchPanel: React.ReactNode;
-  onAddTerm?: (term: string) => void;
-  onOpenLinkDialog?: () => void;
-  onImproveText?: () => void;
-}) {
+export function ContentIntelligence() {
+  const { outline, onJumpToHeading } = useEditorContext();
+
   return (
-    <aside className="h-full overflow-y-auto border-r border-white/10 bg-[#24232c] p-2">
-      <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-300">Inteligencia</div>
-      <div className="space-y-2">
-        {searchPanel}
+    <aside className="admin-sidebar admin-sidebar-left flex h-full min-h-0 w-[424px] shrink-0 flex-col border-r border-(--border) xl:w-[464px]">
+      <div className="border-b border-(--border) px-3 py-1.5 text-[10px] font-semibold uppercase text-(--muted)">
+        Inteligencia
+      </div>
 
-        <Panel icon={<FileText size={14} />} title="Estrutura (H2/H3/H4)">
-          {headings.length === 0 ? (
-            <p className="text-xs leading-5 text-slate-400">Sem heading detectado. Use H2/H3/H4 no editor.</p>
-          ) : (
-            <div className="space-y-2">
-              {headings.map((heading) => (
-                <div key={heading.id} className="rounded-md border border-white/10 bg-[#1d1c24] px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase text-cyan-300">H{heading.level}</p>
-                  <p className="mt-1 text-xs leading-5 text-white">{heading.text}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </Panel>
+      <div
+        id="intelligence-scroll-container"
+        className="admin-scrollbar flex-1 space-y-2 overflow-y-auto px-2.5 py-2 md:px-2.5 md:py-2.5"
+      >
+        <TextSearchPanel />
 
-        <InternalLinksPanel selectedSiloName={selectedSiloName} onOpenLinkDialog={onOpenLinkDialog} />
-        <LinkHygienePanel hasSilo={Boolean(selectedSiloName)} />
-        <GuardianPanel seoChecks={seoChecks} onImproveText={onImproveText} />
-        <TermsPanel onAddTerm={onAddTerm} />
+        <section className="admin-subpane p-2">
+          <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
+            <FileText size={13} />
+            Estrutura (H2/H3/H4)
+          </h3>
+          <div className="mt-2.5 space-y-1.5 border-l border-(--border) pl-2.5">
+            {outline.length === 0 ? (
+              <p className="text-xs text-(--muted-2)">Nenhum heading ainda.</p>
+            ) : (
+              outline.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onJumpToHeading(item.pos)}
+                  className={`block w-full text-left text-[12px] leading-[1.35] text-(--text) hover:text-(--brand-accent) ${
+                    item.level === 3 ? "pl-3 text-(--muted)" : item.level === 4 ? "pl-5 text-(--muted-2)" : ""
+                  }`}
+                >
+                  <span className="line-clamp-2">{item.text}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </section>
+
+        <InternalLinksPanel />
+        <LinkHygienePanel />
+        <GuardianPanel />
+        <TermsPanel />
       </div>
     </aside>
-  );
-}
-
-function Panel({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-md border border-white/15 bg-[#2a2933] p-3">
-      <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.08em] text-cyan-300">
-        {icon}
-        {title}
-      </div>
-      {children}
-    </section>
   );
 }

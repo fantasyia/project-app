@@ -11,7 +11,7 @@ type RichTextEditorProps = {
   initialContent: string;
   placeholder?: string;
   onChange: (payload: { html: string; text: string }) => void;
-  onEditorReady?: (editor: any) => void;
+  onEditorReady?: (editor: Editor | null) => void;
   onSelectionChange?: (selection: string) => void;
 };
 

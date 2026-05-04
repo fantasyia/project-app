@@ -1,100 +1,204 @@
-import { useState } from "react";
-import { Search, Wand2, X } from "lucide-react";
+"use client";
 
-export function TextSearchPanel({
-  value,
-  onChange,
-  hitCount,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  hitCount: number;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
+import { useEffect, useMemo, useState } from "react";
+import { Search, WandSparkles } from "lucide-react";
+import { useEditorContext } from "@/components/editor/EditorContext";
+import {
+  clearFindInContent,
+  getFindInContentState,
+  jumpToFindResult,
+  setFindInContentActiveIndex,
+  setFindInContentQuery,
+} from "@/components/editor/extensions/FindInContent";
+
+type FindPreviewItem = {
+  index: number;
+  from: number;
+  to: number;
+  before: string;
+  match: string;
+  after: string;
+};
+
+function buildSnippet(value: string, maxChars: number) {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (text.length <= maxChars) return text;
+  return `...${text.slice(Math.max(0, text.length - maxChars)).trim()}`;
+}
+
+export function TextSearchPanel() {
+  const { editor } = useEditorContext();
+  const [queryInput, setQueryInput] = useState("");
+
+  const findState = getFindInContentState(editor);
+  const totalMatches = findState.ranges.length;
+  const activeIndex = totalMatches > 0 ? findState.activeIndex : -1;
+
+  const previews = useMemo(() => {
+    if (!editor || !totalMatches) return [];
+    const maxItems = 40;
+    const items = findState.ranges.slice(0, maxItems).map((range, index) => {
+      const from = Math.max(1, range.from - 48);
+      const to = Math.min(editor.state.doc.content.size, range.to + 48);
+      const before = buildSnippet(editor.state.doc.textBetween(from, range.from, " ", " "), 48);
+      const match = editor.state.doc.textBetween(range.from, range.to, " ", " ");
+      const after = buildSnippet(editor.state.doc.textBetween(range.to, to, " ", " "), 48);
+      return {
+        index,
+        from: range.from,
+        to: range.to,
+        before,
+        match,
+        after,
+      } satisfies FindPreviewItem;
+    });
+    return items;
+  }, [editor, findState.ranges, totalMatches]);
+
+  useEffect(() => {
+    if (!editor) return;
+    return () => {
+      clearFindInContent(editor);
+    };
+  }, [editor]);
+
+  const runSearch = () => {
+    if (!editor) return;
+    setFindInContentQuery(editor, queryInput);
+    const next = getFindInContentState(editor);
+    if (next.ranges.length > 0) {
+      jumpToFindResult(editor, next.ranges[0]);
+    }
+  };
+
+  const clearSearch = () => {
+    if (!editor) return;
+    setQueryInput("");
+    clearFindInContent(editor);
+  };
+
+  const focusResult = (index: number) => {
+    if (!editor || !totalMatches) return;
+    const safeIndex = Math.min(totalMatches - 1, Math.max(0, index));
+    const range = findState.ranges[safeIndex];
+    if (!range) return;
+    setFindInContentActiveIndex(editor, safeIndex);
+    jumpToFindResult(editor, range);
+  };
+
+  const jumpRelative = (delta: number) => {
+    if (!totalMatches) return;
+    const base = activeIndex >= 0 ? activeIndex : 0;
+    const next = (base + delta + totalMatches) % totalMatches;
+    focusResult(next);
+  };
+
+  const openQuickFind = () => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("editor:open-quick-find"));
+  };
 
   return (
-    <section className="rounded-md border border-white/15 bg-[#2a2933] p-3">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-200">
+    <section className="admin-subpane space-y-2 p-2">
+      <div className="flex items-center justify-between text-[12px] font-semibold uppercase text-(--muted)">
+        <span className="flex items-center gap-1.5">
           <Search size={14} />
-          Buscar no artigo
-        </div>
+          Buscar No Artigo
+        </span>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] uppercase text-slate-400">{hitCount} resultados</span>
+          <span className="text-[10px] text-(--muted-2)">
+            {totalMatches} resultado{totalMatches === 1 ? "" : "s"}
+          </span>
           <button
             type="button"
-            onClick={() => setIsOpen(true)}
-            className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.05] px-3 py-2 text-xs font-bold text-white"
+            onClick={openQuickFind}
+            className="admin-button-soft inline-flex min-h-0 items-center gap-1 px-2 py-1 text-[10px] text-(--brand-hot)"
           >
-            <Wand2 size={13} />
+            <WandSparkles size={12} />
             Popup
           </button>
         </div>
       </div>
-      <div className="grid gap-2 md:grid-cols-[1fr_78px]">
+
+      <div className="flex gap-2">
         <input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
+          type="text"
+          value={queryInput}
+          onChange={(event) => setQueryInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              runSearch();
+            }
+          }}
           placeholder="Digite palavra ou frase..."
-          className="w-full rounded-md border border-white/12 bg-[#1d1c24] px-3 py-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-cyan-300/60"
+          className="admin-input min-h-[34px] px-3 py-1.5 text-[11px]"
         />
-        <button type="button" className="rounded-md bg-cyan-300 px-3 py-2 text-xs font-bold text-black">
+        <button
+          type="button"
+          onClick={runSearch}
+          className="admin-button-primary min-h-[34px] px-3 py-1.5 text-[10px]"
+        >
           Buscar
         </button>
       </div>
-      <div className="mt-2 grid grid-cols-3 gap-2">
-        <button type="button" className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-2 text-xs font-bold text-slate-300">
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => jumpRelative(-1)}
+          disabled={!totalMatches}
+          className="admin-button-soft min-h-[30px] flex-1 px-2 py-1 text-[10px] disabled:opacity-50"
+        >
           Anterior
         </button>
-        <button type="button" className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-2 text-xs font-bold text-slate-300">
-          Proxima
+        <button
+          type="button"
+          onClick={() => jumpRelative(1)}
+          disabled={!totalMatches}
+          className="admin-button-soft min-h-[30px] flex-1 px-2 py-1 text-[10px] disabled:opacity-50"
+        >
+          Próxima
         </button>
-        <button type="button" onClick={() => onChange("")} className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-2 text-xs font-bold text-white">
+        <button
+          type="button"
+          onClick={clearSearch}
+          className="admin-button-soft min-h-[30px] px-2 py-1 text-[10px]"
+        >
           Limpar
         </button>
       </div>
-      <p className="mt-3 rounded-md border border-white/10 bg-[#1d1c24] px-3 py-2 text-[10px] leading-4 text-slate-400">
-        Use o campo acima para localizar palavra ou frase no artigo e navegar pelo contexto.
-      </p>
 
-      {isOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-xl rounded-lg border border-white/15 bg-[#24232c] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-300">Busca no artigo</p>
-                <h3 className="text-base font-bold text-white">Popup completo de localizacao</h3>
-              </div>
-              <button type="button" onClick={() => setIsOpen(false)} className="rounded-md border border-white/15 p-2 text-slate-300">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="space-y-3 p-4">
-              <input
-                value={value}
-                onChange={(event) => onChange(event.target.value)}
-                placeholder="Digite termo, entidade, anchor ou trecho..."
-                className="admin-input"
-              />
-              <div className="grid grid-cols-3 gap-2">
-                <button type="button" className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white">
-                  Anterior
-                </button>
-                <button type="button" className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white">
-                  Proxima
-                </button>
-                <button type="button" onClick={() => onChange("")} className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white">
-                  Limpar
-                </button>
-              </div>
-              <div className="rounded-md border border-white/12 bg-[#1d1c24] p-3 text-xs leading-5 text-slate-300">
-                <strong className="text-cyan-200">{hitCount}</strong> resultado(s) encontrados. Use este popup para revisar anchors,
-                termos LSI, entidades e trechos antes de aplicar link interno ou melhoria de texto.
-              </div>
-            </div>
-          </div>
+      {totalMatches > 0 ? (
+        <div className="admin-scrollbar max-h-[180px] space-y-1 overflow-y-auto rounded-[12px] border border-(--border) bg-(--surface) p-2">
+          {previews.map((item) => (
+            <button
+              key={`${item.from}-${item.to}-${item.index}`}
+              type="button"
+              onClick={() => focusResult(item.index)}
+              className={`w-full rounded border px-2 py-1 text-left text-[10px] ${
+                item.index === activeIndex
+                  ? "border-[rgba(11,98,107,0.24)] bg-[rgba(15,155,142,0.08)] text-(--brand-hot)"
+                  : "border-(--border) bg-(--surface-muted) text-(--text)"
+              }`}
+            >
+              <span className="font-semibold">#{item.index + 1}</span>{" "}
+              <span className="text-(--muted)">{item.before}</span>{" "}
+              <mark className="rounded bg-[rgba(255,196,92,0.45)] px-0.5 text-(--text)">{item.match}</mark>{" "}
+              <span className="text-(--muted)">{item.after}</span>
+            </button>
+          ))}
+          {totalMatches > previews.length ? (
+            <p className="text-[10px] text-(--muted-2)">
+              Mostrando {previews.length} de {totalMatches} resultados.
+            </p>
+          ) : null}
         </div>
-      ) : null}
+      ) : (
+        <div className="rounded-[12px] border border-(--border) bg-(--surface) p-2 text-[10px] text-(--muted-2)">
+          Use o campo acima para localizar palavra ou frase no artigo e navegar pelo contexto.
+        </div>
+      )}
     </section>
   );
 }

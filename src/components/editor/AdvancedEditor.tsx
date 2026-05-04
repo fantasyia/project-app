@@ -1,928 +1,2351 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import type { Editor } from "@tiptap/core";
+import { startTransition, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEditor, type Editor } from "@tiptap/react";
+import { NodeSelection } from "@tiptap/pm/state";
+import StarterKit from "@tiptap/starter-kit";
+import Underline from "@tiptap/extension-underline";
+import Highlight from "@tiptap/extension-highlight";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableHeader } from "@tiptap/extension-table-header";
+import { TableCell } from "@tiptap/extension-table-cell";
+import Placeholder from "@tiptap/extension-placeholder";
+
+import { EditorImage } from "@/components/editor/extensions/EditorImage";
+import { EntityLink } from "@/components/editor/extensions/EntityLink";
+import { InternalLinkMention } from "@/components/editor/extensions/InternalLinkMention";
+import { InternalLinkCandidate } from "@/components/editor/extensions/InternalLinkCandidate";
+import AffiliateProductCard from "@/components/editor/extensions/AffiliateProductCard";
+import { CtaButton } from "@/components/editor/extensions/CtaButton";
+import { LockedTable } from "@/components/editor/extensions/LockedTable";
+import { FaqBlock } from "@/components/editor/extensions/FaqBlock";
+import { IconBlock } from "@/components/editor/extensions/IconBlock";
+import { CarouselBlock } from "@/components/editor/extensions/CarouselBlock";
+import { YoutubeEmbed, normalizeYoutubeUrl } from "@/components/editor/extensions/YoutubeEmbed";
+import { FindInContent } from "@/components/editor/extensions/FindInContent";
+import { EditorCanvas } from "@/components/editor/EditorCanvas";
+import { ContentIntelligence } from "@/components/editor/ContentIntelligence";
+import { EditorInspector } from "@/components/editor/EditorInspector";
+import { AdvancedLinkDialog } from "@/components/editor/AdvancedLinkDialog";
+import { LinkBubbleMenu } from "@/components/editor/LinkBubbleMenu";
+import { CareGlowBubbleMenu } from "@/components/editor/CareGlowBubbleMenu";
+import { InternalLinkCandidateMenu } from "@/components/editor/InternalLinkCandidateMenu";
+import { saveEditorPost } from "@/app/dashboard/blog/editor/actions";
+import type { EditorMeta, ImageAsset, LinkItem, OutlineItem } from "@/components/editor/types";
+import { resolveDefaultEeat } from "@/lib/editor/defaultEeat";
+import type { PostWithSilo, Silo } from "@/lib/types";
+import { EditorProvider } from "@/components/editor/EditorContext";
 import {
-  AlignCenter,
-  AlignLeft,
-  AlignRight,
-  ArrowDown,
-  ArrowUp,
-  Bold,
-  Check,
-  Eye,
-  FileText,
-  ImageIcon,
-  Italic,
-  Layers,
-  LayoutList,
-  Link2,
-  List,
-  ListOrdered,
-  Monitor,
-  PenLine,
-  Quote,
-  Redo2,
-  Save,
-  Search,
-  ShoppingCart,
-  Smartphone,
-  Strikethrough,
-  Table2,
-  Tablet,
-  Underline,
-  Undo2,
-  Video,
-  Wand2,
-  X,
-} from "lucide-react";
-import { RichTextEditor } from "@/components/blog/rich-text-editor";
-import { createArticle, updateArticle } from "@/lib/actions/blog";
-import { contentToPlainText, legacyContentToHtml } from "@/lib/blog/content";
-import type { BlogArticleRecord, BlogSiloRecord } from "@/lib/blog/types";
-import { getArticleStats } from "@/lib/editor/post-analysis";
-import { ContentIntelligence } from "./ContentIntelligence";
-import { EditorInspector } from "./EditorInspector";
-import { TextSearchPanel } from "./TextSearchPanel";
+  getBpAttrs,
+  inheritDesktopToBp,
+  setDeviceVisibility,
+  setBpAttrs,
+  type ResponsiveMode,
+} from "@/lib/editor/responsive";
+import { buildPostCanonicalPath, normalizeCanonicalPath } from "@/lib/seo/canonical";
+import { normalizeSiloGroup } from "@/lib/silo/groups";
 
-type EditorDialog = "link" | "improve" | "media" | "product" | "block" | null;
+type Props = {
+  post: PostWithSilo;
+  silos?: Silo[];
+};
 
-export function AdvancedEditor({
-  mode,
-  article,
-  silos,
-}: {
-  mode: "create" | "edit";
-  article?: BlogArticleRecord | null;
-  silos: BlogSiloRecord[];
-}) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [activeDialog, setActiveDialog] = useState<EditorDialog>(null);
-  const [dialogSelection, setDialogSelection] = useState("");
-  const [articleEditor, setArticleEditor] = useState<any | null>(null);
-  const [selectedArticleText, setSelectedArticleText] = useState("");
-  const [title, setTitle] = useState(article?.title || "");
-  const [excerpt, setExcerpt] = useState(article?.excerpt || "");
-  const [coverPreview, setCoverPreview] = useState(article?.cover_image_url || "");
-  const [editorHtml, setEditorHtml] = useState(legacyContentToHtml(article?.content));
-  const [editorText, setEditorText] = useState(contentToPlainText(article?.content));
-  const [selectedSiloId, setSelectedSiloId] = useState(article?.silo_id || "");
-  const [siloRole, setSiloRole] = useState(article?.silo_role || "SUPPORT");
-  const [siloGroup, setSiloGroup] = useState(article?.silo_group || "");
-  const [keyword, setKeyword] = useState(article?.target_keyword || "");
-  const [metaTitle, setMetaTitle] = useState(article?.meta_title || "");
-  const [metaDescription, setMetaDescription] = useState(article?.meta_description || "");
-  const [canonicalPath, setCanonicalPath] = useState(article?.canonical_path || "");
-  const [schemaType, setSchemaType] = useState(article?.schema_type || "article");
-  const [intent, setIntent] = useState(article?.intent || "informational");
-  const [category, setCategory] = useState(article?.category || "");
-  const [tags, setTags] = useState((article?.tags || []).join(", "));
-
-  const selectedSilo = silos.find((silo) => silo.id === selectedSiloId) || null;
-  const stats = useMemo(() => getArticleStats(editorHtml), [editorHtml]);
-  const searchHits = searchTerm ? editorText.toLowerCase().split(searchTerm.toLowerCase()).length - 1 : 0;
-  const seoChecks = [
-    { label: "Keyword no titulo", ok: Boolean(keyword && title.toLowerCase().includes(keyword.toLowerCase())) },
-    { label: "Meta description", ok: metaDescription.length >= 120 && metaDescription.length <= 160 },
-    { label: "Outline H2/H3/H4", ok: stats.headings.length >= 2 },
-    { label: "Conteudo suficiente", ok: stats.words >= 120 },
-    { label: "Silo definido", ok: Boolean(selectedSiloId) },
-    { label: "Cover definida", ok: Boolean(coverPreview) },
-  ];
-
-  const handleEditorReady = useCallback((nextEditor: Editor | null) => {
-    setArticleEditor(nextEditor);
-  }, []);
-
-  function handleCoverChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setCoverPreview(URL.createObjectURL(file));
-  }
-
-  function readBrowserSelection(fallback = "") {
-    if (typeof window === "undefined") return fallback;
-    const selected = window.getSelection()?.toString().trim();
-    return selected || fallback;
-  }
-
-  function syncArticleEditorState(nextEditor = articleEditor) {
-    if (!nextEditor) return;
-    setEditorHtml(nextEditor.getHTML());
-    setEditorText(nextEditor.getText());
-  }
-
-  function getArticleSelection(fallback = "") {
-    if (articleEditor) {
-      const { from, to } = articleEditor.state.selection;
-      const selection = articleEditor.state.doc.textBetween(from, to, " ").trim();
-      if (selection) return selection;
-    }
-
-    return selectedArticleText || readBrowserSelection(fallback);
-  }
-
-  function runArticleCommand(command: (editor: any) => void, fallbackHtml?: string) {
-    if (!articleEditor) {
-      if (fallbackHtml) {
-        const nextHtml = `${editorHtml}${fallbackHtml}`;
-        setEditorHtml(nextHtml);
-        setEditorText(contentToPlainText(nextHtml));
-      }
-      return;
-    }
-
-    command(articleEditor);
-    syncArticleEditorState(articleEditor);
-  }
-
-  function insertSnippet(block: string) {
-    runArticleCommand((editor) => {
-      editor.chain().focus().insertContent(block).run();
-    }, block);
-  }
-
-  function replaceSelectionWithHtml(block: string) {
-    insertSnippet(block);
-  }
-
-  function wrapSelection(tagName: "u" | "s", fallbackText: string) {
-    const selection = getArticleSelection(fallbackText);
-    replaceSelectionWithHtml(`<${tagName}>${escapeHtml(selection)}</${tagName}>`);
-  }
-
-  function openDialog(dialog: EditorDialog, fallbackSelection = "") {
-    setDialogSelection(getArticleSelection(fallbackSelection));
-    setActiveDialog(dialog);
-  }
-
-  function commitEditorHtml(nextHtml: string) {
-    setEditorHtml(nextHtml);
-    setEditorText(contentToPlainText(nextHtml));
-  }
-
-  function replaceSelectionOrAppend(selection: string, nextBlock: string) {
-    if (articleEditor) {
-      articleEditor.chain().focus().insertContent(nextBlock).run();
-      syncArticleEditorState(articleEditor);
-      return;
-    }
-
-    const cleanedSelection = selection.trim();
-    if (cleanedSelection && editorHtml.includes(cleanedSelection)) {
-      commitEditorHtml(editorHtml.replace(cleanedSelection, nextBlock));
-      return;
-    }
-
-    insertSnippet(nextBlock);
-  }
-
-  function handleInsertLink(payload: { anchor: string; url: string; title?: string; newTab: boolean; sponsored: boolean }) {
-    const anchor = escapeHtml(payload.anchor.trim() || dialogSelection || payload.url);
-    const href = escapeAttribute(payload.url.trim());
-    const titleAttribute = payload.title?.trim() ? ` title="${escapeAttribute(payload.title.trim())}"` : "";
-    const targetAttribute = payload.newTab ? ' target="_blank"' : "";
-    const relValues = [payload.newTab ? "noopener" : "", payload.sponsored ? "sponsored" : ""].filter(Boolean).join(" ");
-    const relAttribute = relValues ? ` rel="${relValues}"` : "";
-    replaceSelectionOrAppend(dialogSelection || payload.anchor, `<a href="${href}"${titleAttribute}${targetAttribute}${relAttribute}>${anchor}</a>`);
-    setActiveDialog(null);
-  }
-
-  function handleImproveText(payload: { original: string; improved: string; explanation: string }) {
-    const improved = escapeHtml(payload.improved.trim());
-    replaceSelectionOrAppend(payload.original || dialogSelection, `<p>${improved}</p>`);
-    setActiveDialog(null);
-  }
-
-  function addMiniWordPressBlock() {
-    insertSnippet(
-      "<h2>O que realmente muda</h2><p>Explique o impacto pratico para creators, assinantes e descoberta de conteudo visual premium.</p><h3>Como aplicar no FantasyIA</h3><p>Conecte o tema com assinatura, PPV, comunidade, protecao de conteudo ou editorial de topo de funil.</p><h4>Checklist rapido</h4><ul><li>Defina a intencao do post</li><li>Conecte com um silo</li><li>Inclua um proximo passo claro</li></ul>"
-    );
-  }
-
-  async function handleSubmit(formData: FormData) {
-    setError(null);
-
-    if (!title.trim()) {
-      setError("Titulo obrigatorio.");
-      return;
-    }
-
-    formData.set("title", title);
-    formData.set("excerpt", excerpt);
-    formData.set("content", editorHtml);
-    formData.set("existing_cover_url", article?.cover_image_url || "");
-    formData.set("silo_id", selectedSiloId);
-    formData.set("silo_slug", selectedSilo?.slug || "");
-    formData.set("silo_role", siloRole);
-    formData.set("silo_group", siloGroup);
-    formData.set("target_keyword", keyword);
-    formData.set("meta_title", metaTitle || title);
-    formData.set("meta_description", metaDescription || excerpt);
-    formData.set("canonical_path", canonicalPath || (selectedSilo ? `/blog/s/${selectedSilo.slug}` : ""));
-    formData.set("schema_type", schemaType);
-    formData.set("intent", intent);
-    formData.set("category", category);
-    formData.set("tags", tags);
-
-    startTransition(async () => {
-      const result =
-        mode === "edit" && article?.id
-          ? await updateArticle(article.id, formData)
-          : await createArticle(formData);
-
-      if (result?.error) {
-        setError(result.error);
-        return;
-      }
-
-      router.push("/dashboard/blog");
-      router.refresh();
-    });
-  }
-
-  return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#1f1e26] text-white">
-      <EditorTopHeader
-        title={title}
-        slug={article?.slug}
-        pending={pending}
-        onSearch={() => setSearchTerm(searchTerm || title)}
-        onUndo={() => runArticleCommand((editor) => editor.chain().focus().undo().run())}
-        onRedo={() => runArticleCommand((editor) => editor.chain().focus().redo().run())}
-        onAlign={(align) => {
-          const selection = getArticleSelection("Texto alinhado");
-          replaceSelectionWithHtml(`<p style="text-align:${align}">${escapeHtml(selection)}</p>`);
-        }}
-      />
-
-      <div className="grid min-h-0 flex-1 grid-cols-[464px_minmax(720px,1fr)_456px] overflow-hidden">
-      <ContentIntelligence
-        headings={stats.headings}
-        seoChecks={seoChecks}
-        selectedSiloName={selectedSilo?.name}
-        searchPanel={<TextSearchPanel value={searchTerm} onChange={setSearchTerm} hitCount={Math.max(0, searchHits)} />}
-        onAddTerm={(term) => setTags((current) => (current ? `${current}, ${term}` : term))}
-        onOpenLinkDialog={() => openDialog("link", keyword || selectedSilo?.name || title)}
-        onImproveText={() => openDialog("improve", excerpt || editorText.slice(0, 220))}
-      />
-
-      <form id="miniwordpress-editor-form" action={handleSubmit} className="flex min-h-0 min-w-0 flex-col">
-        <input type="hidden" name="content" value={editorHtml} />
-        <input type="hidden" name="existing_cover_url" value={article?.cover_image_url || ""} />
-
-        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-[#24232c] px-3 py-2">
-          <select
-            onChange={(event) => {
-              const value = event.target.value;
-              runArticleCommand((editor) => {
-                if (value === "h2") editor.chain().focus().toggleHeading({ level: 2 }).run();
-                if (value === "h3") editor.chain().focus().toggleHeading({ level: 3 }).run();
-                if (value === "h4") editor.chain().focus().toggleHeading({ level: 4 }).run();
-                if (value === "paragraph") editor.chain().focus().setParagraph().run();
-              });
-            }}
-            defaultValue="paragraph"
-            className="rounded-md border border-white/15 bg-[#1d1c24] px-3 py-2 text-sm font-bold text-white"
-          >
-            <option value="paragraph">Paragrafo</option>
-            <option value="h2">Heading 2</option>
-            <option value="h3">Heading 3</option>
-            <option value="h4">Heading 4</option>
-          </select>
-          <ToolButton icon={<Bold size={15} />} label="Negrito" onClick={() => runArticleCommand((editor) => editor.chain().focus().toggleBold().run(), "<p><strong>Texto em destaque</strong></p>")} />
-          <ToolButton icon={<Italic size={15} />} label="Italico" onClick={() => runArticleCommand((editor) => editor.chain().focus().toggleItalic().run(), "<p><em>Texto enfatizado</em></p>")} />
-          <ToolButton icon={<Underline size={15} />} label="Sublinhado" onClick={() => wrapSelection("u", "Texto sublinhado")} />
-          <ToolButton icon={<Strikethrough size={15} />} label="Tachado" onClick={() => runArticleCommand((editor) => editor.chain().focus().toggleStrike().run(), "<p><s>Texto removido</s></p>")} />
-          <ToolButton icon={<Quote size={15} />} label="Quote" onClick={() => runArticleCommand((editor) => editor.chain().focus().toggleBlockquote().run(), "<blockquote><p>Destaque uma tese, fonte ou insight.</p></blockquote>")} />
-          <ToolButton icon={<List size={15} />} label="Lista" onClick={() => runArticleCommand((editor) => editor.chain().focus().toggleBulletList().run(), "<ul><li>Primeiro ponto</li><li>Segundo ponto</li></ul>")} />
-          <ToolButton icon={<ListOrdered size={15} />} label="Ordenada" onClick={() => runArticleCommand((editor) => editor.chain().focus().toggleOrderedList().run(), "<ol><li>Primeiro passo</li><li>Segundo passo</li></ol>")} />
-          <ToolButton icon={<Link2 size={15} />} label="Link" onClick={() => openDialog("link", keyword || title)} />
-          <ToolButton icon={<Wand2 size={15} />} label="Melhorar texto" onClick={() => openDialog("improve", excerpt || editorText.slice(0, 220))} />
-          <ToolButton icon={<ImageIcon size={15} />} label="Imagem" onClick={() => openDialog("media")} />
-          <ToolButton icon={<Video size={15} />} label="Video" onClick={() => openDialog("media")} />
-          <ToolButton icon={<Table2 size={15} />} label="Tabela" onClick={() => insertSnippet("<table><tbody><tr><td>Criterio</td><td>Analise</td></tr></tbody></table>")} />
-          <button type="button" onClick={() => openDialog("block")} className="rounded-md border border-white/15 bg-[#1d1c24] px-3 py-2 text-xs font-bold text-white">
-            Blocos
-          </button>
-          <button type="button" onClick={() => openDialog("product")} className="rounded-md bg-cyan-300 px-4 py-2 text-xs font-bold text-black">
-            <span className="inline-flex items-center gap-2"><ShoppingCart size={14} /> Produto</span>
-          </button>
-        </div>
-
-        <div className="editor-public-preview flex-1 overflow-y-auto bg-[#f8f5ef] p-6 text-slate-900">
-          <div className="mx-auto max-w-5xl rounded-sm bg-[#f8f5ef]">
-            <div className="mb-5 text-xs text-slate-500">
-              Home / {selectedSilo?.name || "Sem silo"} / {title || "Novo post"}
-            </div>
-            <input
-              name="title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Titulo do post"
-              className="w-full bg-transparent text-5xl font-light leading-tight text-teal-900 outline-none placeholder:text-slate-300 md:text-7xl"
-            />
-            <div className="mt-5 flex items-center gap-4 text-sm text-slate-500">
-              <span>Por Equipe FantasyIA</span>
-              <span>{stats.words} palavras</span>
-              <span>{stats.readingTime} min</span>
-            </div>
-
-            <div className="mt-7 grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-              <label className="relative flex min-h-[260px] cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-white/50">
-                {coverPreview ? (
-                  <Image src={coverPreview} alt="Cover" fill unoptimized className="object-cover" />
-                ) : (
-                  <span className="flex flex-col items-center gap-2 text-sm font-bold text-slate-500">
-                    <ImageIcon size={30} />
-                    Clique para trocar capa
-                  </span>
-                )}
-                <input name="cover" type="file" accept="image/*" className="hidden" onChange={handleCoverChange} />
-              </label>
-
-              <div className="rounded-xl border border-slate-200 bg-white/60 p-4">
-                <p className="text-xs font-bold uppercase text-slate-500">Lead / introducao</p>
-                <textarea
-                  value={excerpt}
-                  onChange={(event) => setExcerpt(event.target.value)}
-                  placeholder="Lead do artigo..."
-                  className="mt-3 min-h-[170px] w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-slate-400"
-                />
-              </div>
-            </div>
-
-            <div className="mt-8 rounded-xl border border-slate-200 bg-white p-4">
-              <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase text-slate-500">
-                <LayoutList size={14} />
-                Corpo do post
-              </div>
-              <RichTextEditor
-                initialContent={editorHtml}
-                onEditorReady={handleEditorReady}
-                onSelectionChange={setSelectedArticleText}
-                onChange={({ html, text }) => {
-                  setEditorHtml(html);
-                  setEditorText(text);
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      </form>
-
-      <EditorInspector
-        silos={silos}
-        selectedSiloId={selectedSiloId}
-        onSiloChange={setSelectedSiloId}
-        fields={{
-          siloRole,
-          setSiloRole,
-          siloGroup,
-          setSiloGroup,
-          keyword,
-          setKeyword,
-          metaTitle,
-          setMetaTitle,
-          metaDescription,
-          setMetaDescription,
-          canonicalPath,
-          setCanonicalPath,
-          schemaType,
-          setSchemaType,
-          intent,
-          setIntent,
-          category,
-          setCategory,
-          tags,
-          setTags,
-          title,
-          setTitle,
-          excerpt,
-          setExcerpt,
-          coverPreview,
-          status: article?.status,
-        }}
-        pending={pending}
-        error={error}
-        mode={mode}
-      />
-      </div>
-
-      <EditorDialogLayer
-        activeDialog={activeDialog}
-        selection={dialogSelection}
-        keyword={keyword}
-        title={title}
-        selectedSiloName={selectedSilo?.name}
-        onClose={() => setActiveDialog(null)}
-        onInsertLink={handleInsertLink}
-        onImproveText={handleImproveText}
-        onInsertMedia={(html) => {
-          insertSnippet(html);
-          setActiveDialog(null);
-        }}
-        onInsertProduct={(html) => {
-          insertSnippet(html);
-          setActiveDialog(null);
-        }}
-        onInsertBlock={() => {
-          addMiniWordPressBlock();
-          setActiveDialog(null);
-        }}
-      />
-    </div>
-  );
-}
-
-function EditorDialogLayer({
-  activeDialog,
-  selection,
-  keyword,
-  title,
-  selectedSiloName,
-  onClose,
-  onInsertLink,
-  onImproveText,
-  onInsertMedia,
-  onInsertProduct,
-  onInsertBlock,
-}: {
-  activeDialog: EditorDialog;
-  selection: string;
-  keyword: string;
-  title: string;
-  selectedSiloName?: string | null;
-  onClose: () => void;
-  onInsertLink: (payload: { anchor: string; url: string; title?: string; newTab: boolean; sponsored: boolean }) => void;
-  onImproveText: (payload: { original: string; improved: string; explanation: string }) => void;
-  onInsertMedia: (html: string) => void;
-  onInsertProduct: (html: string) => void;
-  onInsertBlock: () => void;
-}) {
-  if (!activeDialog) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-      {activeDialog === "link" ? (
-        <LinkDialog
-          selection={selection}
-          keyword={keyword}
-          selectedSiloName={selectedSiloName}
-          onClose={onClose}
-          onInsert={onInsertLink}
-        />
-      ) : null}
-      {activeDialog === "improve" ? (
-        <ImproveTextDialog selection={selection} keyword={keyword} title={title} selectedSiloName={selectedSiloName} onClose={onClose} onApply={onImproveText} />
-      ) : null}
-      {activeDialog === "media" ? <MediaDialog onClose={onClose} onInsert={onInsertMedia} /> : null}
-      {activeDialog === "product" ? <ProductDialog onClose={onClose} onInsert={onInsertProduct} /> : null}
-      {activeDialog === "block" ? <BlockDialog onClose={onClose} onInsertBlock={onInsertBlock} /> : null}
-    </div>
-  );
-}
-
-function LinkDialog({
-  selection,
-  keyword,
-  selectedSiloName,
-  onClose,
-  onInsert,
-}: {
-  selection: string;
-  keyword: string;
-  selectedSiloName?: string | null;
-  onClose: () => void;
-  onInsert: (payload: { anchor: string; url: string; title?: string; newTab: boolean; sponsored: boolean }) => void;
-}) {
-  const [anchor, setAnchor] = useState(selection || keyword || "");
-  const [url, setUrl] = useState(selectedSiloName ? `/blog/s/${slugify(selectedSiloName)}` : "/blog");
-  const [linkTitle, setLinkTitle] = useState("");
-  const [newTab, setNewTab] = useState(false);
-  const [sponsored, setSponsored] = useState(false);
-
-  return (
-    <DialogShell eyebrow="Links internos IA" title="Inserir link completo" onClose={onClose}>
-      <div className="grid gap-3">
-        <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
-          Anchor
-          <input value={anchor} onChange={(event) => setAnchor(event.target.value)} className="admin-input normal-case tracking-normal" />
-        </label>
-        <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
-          URL destino
-          <input value={url} onChange={(event) => setUrl(event.target.value)} className="admin-input font-mono normal-case tracking-normal" />
-        </label>
-        <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
-          Title opcional
-          <input value={linkTitle} onChange={(event) => setLinkTitle(event.target.value)} className="admin-input normal-case tracking-normal" />
-        </label>
-        <div className="grid gap-2 md:grid-cols-2">
-          <label className="flex items-center gap-2 rounded-md border border-white/12 bg-[#1d1c24] p-3 text-xs text-slate-300">
-            <input type="checkbox" checked={newTab} onChange={(event) => setNewTab(event.target.checked)} />
-            Abrir em nova aba
-          </label>
-          <label className="flex items-center gap-2 rounded-md border border-white/12 bg-[#1d1c24] p-3 text-xs text-slate-300">
-            <input type="checkbox" checked={sponsored} onChange={(event) => setSponsored(event.target.checked)} />
-            Marcar sponsored
-          </label>
-        </div>
-        <div className="rounded-md border border-cyan-300/20 bg-[#10262d] p-3 text-xs leading-5 text-cyan-100">
-          Sugestao: use anchors naturais e priorize links para o silo {selectedSiloName || "editorial"} antes de links externos.
-        </div>
-        <DialogActions onClose={onClose}>
-          <button
-            type="button"
-            onClick={() => onInsert({ anchor, url, title: linkTitle, newTab, sponsored })}
-            disabled={!anchor.trim() || !url.trim()}
-            className="inline-flex items-center gap-2 rounded-md bg-cyan-300 px-4 py-2 text-xs font-bold text-black disabled:opacity-50"
-          >
-            <Check size={14} />
-            Inserir link
-          </button>
-        </DialogActions>
-      </div>
-    </DialogShell>
-  );
-}
-
-function ImproveTextDialog({
-  selection,
-  keyword,
-  title,
-  selectedSiloName,
-  onClose,
-  onApply,
-}: {
-  selection: string;
-  keyword: string;
-  title: string;
-  selectedSiloName?: string | null;
-  onClose: () => void;
-  onApply: (payload: { original: string; improved: string; explanation: string }) => void;
-}) {
-  const [original, setOriginal] = useState(selection || title || "");
-  const [mode, setMode] = useState("clareza");
-  const [improved, setImproved] = useState(() => buildImprovedText(selection || title || "", keyword, selectedSiloName, "clareza"));
-
-  function regenerate(nextMode = mode) {
-    setMode(nextMode);
-    setImproved(buildImprovedText(original, keyword, selectedSiloName, nextMode));
-  }
-
-  return (
-    <DialogShell eyebrow="Guardiao SEO" title="Melhorar trecho selecionado" onClose={onClose} wide>
-      <div className="grid gap-3">
-        <div className="flex flex-wrap gap-2">
-          {["clareza", "gancho", "seo", "e-e-a-t"].map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => regenerate(item)}
-              className={`rounded-md border px-3 py-2 text-xs font-bold uppercase ${
-                mode === item ? "border-cyan-300/50 bg-[#10262d] text-cyan-200" : "border-white/12 bg-[#1d1c24] text-slate-300"
-              }`}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
-            Trecho original
-            <textarea value={original} onChange={(event) => setOriginal(event.target.value)} rows={8} className="admin-input normal-case tracking-normal" />
-          </label>
-          <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
-            Versao melhorada
-            <textarea value={improved} onChange={(event) => setImproved(event.target.value)} rows={8} className="admin-input normal-case tracking-normal" />
-          </label>
-        </div>
-        <div className="rounded-md border border-white/12 bg-[#1d1c24] p-3 text-xs leading-5 text-slate-300">
-          Mantem a intencao, adapta o trecho para FantasyIA e evita keyword forcada. Keyword: {keyword || "pendente"}.
-        </div>
-        <DialogActions onClose={onClose}>
-          <button type="button" onClick={() => regenerate()} className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-4 py-2 text-xs font-bold text-white">
-            <Wand2 size={14} />
-            Gerar novamente
-          </button>
-          <button
-            type="button"
-            onClick={() => onApply({ original, improved, explanation: mode })}
-            disabled={!improved.trim()}
-            className="inline-flex items-center gap-2 rounded-md bg-cyan-300 px-4 py-2 text-xs font-bold text-black disabled:opacity-50"
-          >
-            <Check size={14} />
-            Aplicar no texto
-          </button>
-        </DialogActions>
-      </div>
-    </DialogShell>
-  );
-}
-
-function MediaDialog({ onClose, onInsert }: { onClose: () => void; onInsert: (html: string) => void }) {
-  const [url, setUrl] = useState("");
-  const [alt, setAlt] = useState("");
-  const [kind, setKind] = useState<"image" | "video">("image");
-
-  return (
-    <DialogShell eyebrow="Midia editorial" title="Inserir imagem ou video" onClose={onClose}>
-      <div className="grid gap-3">
-        <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => setKind("image")} className={`rounded-md border px-3 py-2 text-xs font-bold ${kind === "image" ? "border-cyan-300/50 text-cyan-200" : "border-white/12 text-slate-300"}`}>Imagem</button>
-          <button type="button" onClick={() => setKind("video")} className={`rounded-md border px-3 py-2 text-xs font-bold ${kind === "video" ? "border-cyan-300/50 text-cyan-200" : "border-white/12 text-slate-300"}`}>Video</button>
-        </div>
-        <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="URL da midia" className="admin-input" />
-        <input value={alt} onChange={(event) => setAlt(event.target.value)} placeholder="Alt text ou legenda" className="admin-input" />
-        <DialogActions onClose={onClose}>
-          <button
-            type="button"
-            onClick={() => onInsert(kind === "image" ? `<figure><img src="${escapeAttribute(url)}" alt="${escapeAttribute(alt)}" /><figcaption>${escapeHtml(alt)}</figcaption></figure>` : `<p>[video: ${escapeHtml(url)}]</p>`)}
-            disabled={!url.trim()}
-            className="rounded-md bg-cyan-300 px-4 py-2 text-xs font-bold text-black disabled:opacity-50"
-          >
-            Inserir midia
-          </button>
-        </DialogActions>
-      </div>
-    </DialogShell>
-  );
-}
-
-function ProductDialog({ onClose, onInsert }: { onClose: () => void; onInsert: (html: string) => void }) {
-  const [name, setName] = useState("");
-  const [url, setUrl] = useState("");
-  const [cta, setCta] = useState("Ver produto");
-
-  return (
-    <DialogShell eyebrow="Produto / afiliacao" title="Inserir bloco de produto" onClose={onClose}>
-      <div className="grid gap-3">
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Nome do produto, creator pack ou oferta" className="admin-input" />
-        <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="URL de destino" className="admin-input" />
-        <input value={cta} onChange={(event) => setCta(event.target.value)} placeholder="Texto do CTA" className="admin-input" />
-        <DialogActions onClose={onClose}>
-          <button
-            type="button"
-            onClick={() => onInsert(`<aside class="product-callout"><h3>${escapeHtml(name)}</h3><p>Oferta relacionada ao conteudo visual premium do FantasyIA.</p><a href="${escapeAttribute(url)}">${escapeHtml(cta)}</a></aside>`)}
-            disabled={!name.trim() || !url.trim()}
-            className="rounded-md bg-cyan-300 px-4 py-2 text-xs font-bold text-black disabled:opacity-50"
-          >
-            Inserir produto
-          </button>
-        </DialogActions>
-      </div>
-    </DialogShell>
-  );
-}
-
-function BlockDialog({ onClose, onInsertBlock }: { onClose: () => void; onInsertBlock: () => void }) {
-  return (
-    <DialogShell eyebrow="Blocos editoriais" title="Inserir bloco Mini WordPress" onClose={onClose}>
-      <div className="grid gap-2">
-        {["Brief editorial", "Checklist H2/H3/H4", "CTA premium", "FAQ rapido"].map((label) => (
-          <button key={label} type="button" onClick={onInsertBlock} className="rounded-md border border-white/12 bg-[#1d1c24] px-3 py-3 text-left text-xs font-bold text-white hover:border-cyan-300/45">
-            {label}
-          </button>
-        ))}
-      </div>
-    </DialogShell>
-  );
-}
-
-function DialogShell({
-  eyebrow,
-  title,
-  children,
-  onClose,
-  wide,
-}: {
-  eyebrow: string;
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-  wide?: boolean;
-}) {
-  return (
-    <div className={`max-h-[88vh] w-full overflow-y-auto rounded-lg border border-white/15 bg-[#24232c] shadow-2xl ${wide ? "max-w-4xl" : "max-w-2xl"}`}>
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-300">{eyebrow}</p>
-          <h3 className="text-base font-bold text-white">{title}</h3>
-        </div>
-        <button type="button" onClick={onClose} className="rounded-md border border-white/15 p-2 text-slate-300 hover:text-white">
-          <X size={16} />
-        </button>
-      </div>
-      <div className="p-4">{children}</div>
-    </div>
-  );
-}
-
-function DialogActions({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="flex flex-wrap justify-end gap-2 border-t border-white/10 pt-3">
-      <button type="button" onClick={onClose} className="rounded-md border border-white/15 bg-white/[0.04] px-4 py-2 text-xs font-bold text-white">
-        Cancelar
-      </button>
-      {children}
-    </div>
-  );
-}
-
-function EditorTopHeader({
-  title,
-  slug,
-  pending,
-  onSearch,
-  onUndo,
-  onRedo,
-  onAlign,
-}: {
-  title: string;
-  slug?: string;
-  pending: boolean;
-  onSearch: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
-  onAlign: (align: "left" | "center" | "right") => void;
-}) {
-  return (
-    <header className="border-b border-white/10 bg-[#1d1c24] px-4 py-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex min-w-[330px] items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/15 bg-white/[0.04] text-xs font-black text-cyan-300">
-            FIA
-          </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-white/45">FantasyIA Editor</p>
-            <div className="flex items-center gap-3">
-              <h1 className="text-lg font-bold uppercase tracking-wide text-cyan-200">Editor de Posts</h1>
-              <p className="hidden text-xs text-white/45 xl:block">SEO, conteudo e publicacao num fluxo continuo.</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex min-w-[170px] items-center gap-2 rounded-md border border-white/12 bg-[#24232c] px-3 py-2 text-xs text-slate-300">
-          <span className="font-bold text-white">Editor</span>
-          <span className="h-px flex-1 bg-white/15" />
-          <span>{pending ? "Salvando..." : "Salvo agora"}</span>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <ToolButton icon={<Undo2 size={15} />} label="Desfazer" onClick={onUndo} />
-          <ToolButton icon={<Redo2 size={15} />} label="Refazer" onClick={onRedo} />
-          <ToolButton icon={<ArrowUp size={15} />} label="Mover acima" />
-          <ToolButton icon={<ArrowDown size={15} />} label="Mover abaixo" />
-          <ToolButton icon={<AlignLeft size={15} />} label="Alinhar esquerda" onClick={() => onAlign("left")} />
-          <ToolButton icon={<AlignCenter size={15} />} label="Alinhar centro" onClick={() => onAlign("center")} />
-          <ToolButton icon={<AlignRight size={15} />} label="Alinhar direita" onClick={() => onAlign("right")} />
-        </div>
-
-        <div className="flex items-center gap-2 rounded-md border border-white/12 bg-[#24232c] px-2 py-1">
-          <span className="px-2 text-[10px] font-bold uppercase text-slate-400">Modos</span>
-          <button type="button" title="Desktop" className="rounded px-2 py-1 text-cyan-200"><Monitor size={14} /></button>
-          <button type="button" title="Tablet" className="rounded px-2 py-1 text-slate-300"><Tablet size={14} /></button>
-          <button type="button" title="Mobile" className="rounded px-2 py-1 text-slate-300"><Smartphone size={14} /></button>
-        </div>
-
-        <button
-          type="button"
-          onClick={onSearch}
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-white/15 bg-[#24232c] px-3 text-xs font-bold text-white hover:border-cyan-300/45"
-        >
-          <Search size={14} />
-          Buscar
-        </button>
-
-        <button
-          form="miniwordpress-editor-form"
-          type="submit"
-          disabled={pending}
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-cyan-300/50 bg-cyan-300 px-3 text-xs font-bold text-black shadow-[0_0_18px_rgba(103,232,249,0.22)] disabled:opacity-60"
-        >
-          <Save size={14} />
-          Salvar
-        </button>
-
-        {slug ? (
-          <Link
-            href={`/blog/${slug}`}
-            target="_blank"
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-white/15 bg-[#24232c] px-3 text-xs font-bold text-white hover:border-cyan-300/45"
-          >
-            <Eye size={14} />
-            Preview
-          </Link>
-        ) : (
-          <button type="button" className="inline-flex h-9 items-center gap-2 rounded-md border border-white/10 bg-[#24232c] px-3 text-xs font-bold text-slate-500">
-            <Eye size={14} />
-            Preview
-          </button>
-        )}
-
-        <nav className="ml-auto mr-12 flex items-center gap-2">
-          <HeaderNav href="/dashboard/blog" label="Conteudo" icon={<FileText size={14} />} />
-          <HeaderNav href="/dashboard/blog/silos" label="Silos" icon={<Layers size={14} />} />
-          <HeaderNav href="/dashboard/blog/create" label="Novo post" icon={<PenLine size={14} />} primary />
-        </nav>
-      </div>
-      <p className="sr-only">{title || "Novo post"}</p>
-    </header>
-  );
-}
-
-function HeaderNav({
-  href,
-  label,
-  icon,
-  primary,
-}: {
-  href: string;
-  label: string;
-  icon: React.ReactNode;
-  primary?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-bold ${
-        primary
-          ? "border-cyan-300/40 bg-cyan-300 text-black shadow-[0_0_18px_rgba(103,232,249,0.28)]"
-          : "border-white/15 bg-white/[0.03] text-white hover:border-cyan-300/45"
-      }`}
-    >
-      {icon}
-      {label}
-    </Link>
-  );
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function escapeAttribute(value: string) {
-  return escapeHtml(value).replace(/`/g, "&#096;");
-}
+type MetaPatch = Partial<EditorMeta>;
 
 function slugify(value: string) {
   return value
+    .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "");
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
 }
 
-function buildImprovedText(original: string, keyword: string, selectedSiloName?: string | null, mode = "clareza") {
-  const base = original.trim() || "Este trecho precisa conectar contexto, promessa editorial e proximo passo para o leitor.";
-  const silo = selectedSiloName ? ` dentro do silo ${selectedSiloName}` : "";
-  const keywordNote = keyword ? `, mantendo ${keyword} como referencia sem forcar a repeticao` : "";
-
-  if (mode === "gancho") {
-    return `${base} Abra com uma promessa mais clara para quem busca conteudo visual premium${silo}${keywordNote}, mostrando o que muda na decisao do leitor.`;
-  }
-
-  if (mode === "seo") {
-    return `${base} Reforce a intencao de busca com linguagem natural${keywordNote} e conecte o paragrafo ao proximo topico do artigo${silo}.`;
-  }
-
-  if (mode === "e-e-a-t") {
-    return `${base} Acrescente criterio editorial, fonte quando necessario e limite afirmacoes absolutas para preservar confianca e autoridade${silo}.`;
-  }
-
-  return `${base} Deixe a frase mais direta, reduza ambiguidade e mantenha um ritmo editorial util para creators, assinantes e conteudo visual premium${silo}.`;
+function resolvePostCanonicalPath(rawCanonical: string | null | undefined, siloSlug: string | null | undefined, slug: string | null | undefined) {
+  return buildPostCanonicalPath(siloSlug, slug) ?? normalizeCanonicalPath(rawCanonical) ?? "";
 }
 
-function ToolButton({
-  icon,
-  label,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onClick?: () => void;
-}) {
+function normalizeImageDimension(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return Math.round(parsed);
+}
+
+function isPersistableImageUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith("blob:")) return false;
+  if (trimmed.startsWith("data:")) return false;
+  return true;
+}
+
+function extractContentImages(doc: any): ImageAsset[] {
+  const images: ImageAsset[] = [];
+  const seen = new Set<string>();
+
+  const walk = (node: any) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (node.type === "image") {
+      const src = String(node?.attrs?.src ?? "").trim();
+      if (isPersistableImageUrl(src) && !seen.has(src)) {
+        seen.add(src);
+        images.push({
+          url: src,
+          alt: String(node?.attrs?.alt ?? "").trim(),
+          width: normalizeImageDimension(node?.attrs?.width),
+          height: normalizeImageDimension(node?.attrs?.height),
+        });
+      }
+    }
+    if (Array.isArray(node.content)) {
+      node.content.forEach(walk);
+    }
+  };
+
+  walk(doc);
+  return images;
+}
+
+function buildActiveImageLibrary(
+  currentImages: ImageAsset[],
+  doc: any,
+  heroImageUrl: string | null | undefined,
+  heroImageAlt: string | null | undefined
+): ImageAsset[] {
+  const currentByUrl = new Map(
+    (currentImages ?? [])
+      .filter((image) => isPersistableImageUrl(image?.url))
+      .map((image) => [image.url, image] as const)
+  );
+  const nextImages: ImageAsset[] = [];
+  const seen = new Set<string>();
+
+  const normalizedHeroUrl = isPersistableImageUrl(heroImageUrl) ? heroImageUrl.trim() : "";
+  if (normalizedHeroUrl && !seen.has(normalizedHeroUrl)) {
+    const currentHero = currentByUrl.get(normalizedHeroUrl);
+    seen.add(normalizedHeroUrl);
+    nextImages.push({
+      url: normalizedHeroUrl,
+      alt: String(heroImageAlt ?? currentHero?.alt ?? "").trim(),
+      width: currentHero?.width,
+      height: currentHero?.height,
+      fileName: currentHero?.fileName,
+      createdAt: currentHero?.createdAt,
+    });
+  }
+
+  extractContentImages(doc).forEach((image) => {
+    if (seen.has(image.url)) return;
+    const current = currentByUrl.get(image.url);
+    seen.add(image.url);
+    nextImages.push({
+      url: image.url,
+      alt: image.alt || current?.alt || "",
+      width: image.width ?? current?.width,
+      height: image.height ?? current?.height,
+      fileName: current?.fileName,
+      createdAt: current?.createdAt,
+    });
+  });
+
+  return nextImages;
+}
+
+function areImageAssetsEqual(left: ImageAsset[], right: ImageAsset[]) {
+  if (left.length !== right.length) return false;
+  return left.every((image, index) => {
+    const other = right[index];
+    return (
+      image.url === other?.url &&
+      (image.alt ?? "") === (other?.alt ?? "") &&
+      (image.width ?? null) === (other?.width ?? null) &&
+      (image.height ?? null) === (other?.height ?? null) &&
+      (image.fileName ?? null) === (other?.fileName ?? null) &&
+      (image.createdAt ?? null) === (other?.createdAt ?? null)
+    );
+  });
+}
+
+type HighlightOccurrence = {
+  id: string;
+  source_post_id: string;
+  target_post_id?: string | null;
+  anchor_text: string;
+  href_normalized: string;
+  context_snippet?: string | null;
+  start_index?: number | null;
+  end_index?: number | null;
+  occurrence_key?: string | null;
+};
+
+type PillarConflictPrompt = {
+  code: "PILLAR_CONFLICT";
+  silo_id: string;
+  current_pillar: {
+    id: string;
+    title: string;
+    slug: string;
+    silo_group: string | null;
+    silo_order: number | null;
+  };
+  pendingStatus?: EditorMeta["status"];
+};
+
+const PILLAR_CONFLICT_PREFIX = "PILLAR_CONFLICT::";
+
+function parsePillarConflictError(error: unknown): Omit<PillarConflictPrompt, "pendingStatus"> | null {
+  const message = typeof (error as any)?.message === "string" ? (error as any).message : "";
+  if (!message.startsWith(PILLAR_CONFLICT_PREFIX)) return null;
+  const raw = message.slice(PILLAR_CONFLICT_PREFIX.length).trim();
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as Omit<PillarConflictPrompt, "pendingStatus">;
+    if (
+      parsed?.code === "PILLAR_CONFLICT" &&
+      typeof parsed?.silo_id === "string" &&
+      typeof parsed?.current_pillar?.id === "string"
+    ) {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function normalizeText(value: string) {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function normalizeHref(href: string) {
+  if (!href) return "";
+  try {
+    const url = new URL(href, "http://local");
+    return url.pathname.replace(/\/+$/g, "");
+  } catch {
+    return href.split(/[?#]/)[0].replace(/\/+$/g, "");
+  }
+}
+
+function highlightOccurrenceInEditor(editor: Editor, occurrence: HighlightOccurrence) {
+  const candidates: Array<{ pos: number; nodeSize: number; hrefMatch: boolean; anchorMatch: boolean }> = [];
+  const targetHref = normalizeHref(occurrence.href_normalized);
+  const targetAnchor = normalizeText(occurrence.anchor_text);
+
+  editor.state.doc.descendants((node, pos) => {
+    if (!node.isText) return;
+    const linkMark = node.marks.find((mark) => mark.type.name === "link");
+    if (!linkMark) return;
+    const href = normalizeHref(String(linkMark.attrs?.href ?? ""));
+    const text = normalizeText(node.text || "");
+    const hrefMatch = Boolean(targetHref && href === targetHref);
+    const anchorMatch = Boolean(targetAnchor && text === targetAnchor);
+    if (hrefMatch || anchorMatch) {
+      candidates.push({ pos, nodeSize: node.nodeSize, hrefMatch, anchorMatch });
+    }
+  });
+
+  if (!candidates.length) return false;
+  candidates.sort((a, b) => {
+    const aScore = (a.hrefMatch ? 2 : 0) + (a.anchorMatch ? 1 : 0);
+    const bScore = (b.hrefMatch ? 2 : 0) + (b.anchorMatch ? 1 : 0);
+    return bScore - aScore;
+  });
+  const match = candidates[0];
+  const from = match.pos;
+  const to = match.pos + match.nodeSize;
+  editor
+    .chain()
+    .focus()
+    .setTextSelection({ from, to })
+    .setMark("highlight", { color: "#FDE68A" })
+    .scrollIntoView()
+    .run();
+  return true;
+}
+
+function hasBoldStyle(style: string) {
+  const match = /font-weight\s*:\s*([^;]+)/i.exec(style);
+  if (!match) return false;
+  const value = match[1].trim().toLowerCase();
+  if (value === "bold" || value === "bolder") return true;
+  const weight = Number.parseInt(value, 10);
+  return Number.isFinite(weight) && weight >= 600;
+}
+
+function hasItalicStyle(style: string) {
+  return /font-style\s*:\s*italic/i.test(style);
+}
+
+function hasUnderlineStyle(style: string) {
+  return /text-decoration\s*:\s*[^;]*underline/i.test(style) || /text-decoration-line\s*:\s*underline/i.test(style);
+}
+
+function transformGoogleDocsPaste(html: string) {
+  if (!html || typeof window === "undefined") return html;
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const spans = Array.from(doc.querySelectorAll("span"));
+
+    spans.forEach((span) => {
+      const style = (span.getAttribute("style") ?? "").toLowerCase();
+      const isBold = hasBoldStyle(style);
+      const isItalic = hasItalicStyle(style);
+      const isUnderline = hasUnderlineStyle(style);
+      if (!isBold && !isItalic && !isUnderline) return;
+
+      const tags: Array<"strong" | "em" | "u"> = [];
+      if (isBold) tags.push("strong");
+      if (isItalic) tags.push("em");
+      if (isUnderline) tags.push("u");
+
+      let wrapper: HTMLElement | null = null;
+      let current: HTMLElement | null = null;
+      tags.forEach((tag) => {
+        const el = doc.createElement(tag);
+        if (!wrapper) wrapper = el;
+        if (current) current.appendChild(el);
+        current = el;
+      });
+
+      if (!wrapper || !current) return;
+
+      while (span.firstChild) {
+        (current as HTMLElement).appendChild(span.firstChild);
+      }
+
+      span.replaceWith(wrapper);
+    });
+
+    return doc.body.innerHTML;
+  } catch {
+    return html;
+  }
+}
+
+function toLocalInput(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function toIsoString(value: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function extractAffiliateProducts(json: any) {
+  const products: any[] = [];
+
+  function walk(node: any) {
+    if (!node) return;
+    if (Array.isArray(node)) return node.forEach(walk);
+
+    if ((node.type === "affiliateProduct" || node.type === "affiliateProductCard") && node.attrs) {
+      products.push({
+        title: node.attrs.title,
+        image: node.attrs.image,
+        price: node.attrs.price,
+        rating: node.attrs.rating,
+        features: node.attrs.features,
+        url: node.attrs.url || node.attrs.href,
+        currency: "BRL",
+      });
+    }
+
+    if (node.content) walk(node.content);
+  }
+
+  walk(json);
+  return products;
+}
+
+function extractOutline(editor: Editor | null): OutlineItem[] {
+  if (!editor) return [];
+  const items: OutlineItem[] = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "heading") {
+      const level = node.attrs.level;
+      if (level === 2 || level === 3 || level === 4) {
+        items.push({
+          id: `${pos}-${level}`,
+          level,
+          text: node.textContent,
+          pos: pos + 1,
+        });
+      }
+    }
+    return true;
+  });
+  return items;
+}
+
+function resolveLinkType(attrs: Record<string, any>, href: string): LinkItem["type"] {
+  const rel = String(attrs.rel ?? "");
+  const entity = attrs["data-entity-type"] ?? attrs["data-entity"];
+  if (entity === "about" || rel.includes("about")) return "about";
+  if (entity === "mention" || rel.includes("mention")) return "mention";
+
+  const explicit = attrs["data-link-type"] as LinkItem["type"] | undefined;
+  if (explicit) return explicit;
+  if (rel.includes("sponsored")) return "affiliate";
+  if (href.startsWith("/")) return "internal";
+  return "external";
+}
+
+function extractLinks(editor: Editor | null): LinkItem[] {
+  if (!editor) return [];
+  const items: LinkItem[] = [];
+
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "mention") {
+      const attrs = node.attrs as any;
+      const href = attrs.href ?? "";
+      if (!href) return true;
+      items.push({
+        id: `${pos}-mention`,
+        href,
+        text: attrs.label ?? "",
+        type: "mention",
+        target: null,
+        rel: null,
+        from: pos,
+        to: pos + node.nodeSize,
+        dataPostId: attrs.id ?? null,
+        dataEntityType: "mention",
+      });
+      return true;
+    }
+
+    if (node.type.name === "cta_button") {
+      const attrs = node.attrs as any;
+      const href = attrs.href ?? attrs.url ?? "";
+      if (!href) return true;
+      const variant = String(attrs.variant ?? "");
+      const isInternal = href.startsWith("/");
+      const isAmazon =
+        variant.startsWith("amazon") ||
+        String(attrs.rel ?? "").includes("sponsored") ||
+        href.includes("amazon.") ||
+        href.includes("amzn.to") ||
+        href.includes("a.co");
+      items.push({
+        id: `${pos}-cta`,
+        href,
+        text: attrs.label ?? "CTA",
+        type: isInternal ? "internal" : isAmazon ? "affiliate" : "external",
+        target: attrs.target ?? (isAmazon ? "_blank" : isInternal ? "_self" : null),
+        rel: attrs.rel ?? (isAmazon ? "sponsored nofollow" : null),
+        from: pos,
+        to: pos + node.nodeSize,
+        dataPostId: null,
+        dataEntityType: null,
+      });
+      return true;
+    }
+
+    if (node.type.name === "affiliateProductCard") {
+      const attrs = node.attrs as any;
+      const href = attrs.url ?? attrs.href ?? "";
+      if (!href) return true;
+      items.push({
+        id: `${pos}-product`,
+        href,
+        text: attrs.title ?? "Produto",
+        type: "affiliate",
+        target: "_blank",
+        rel: "sponsored nofollow",
+        from: pos,
+        to: pos + node.nodeSize,
+        dataPostId: null,
+        dataEntityType: null,
+      });
+      return true;
+    }
+
+    if (!node.isText) return true;
+    const marks = node.marks ?? [];
+    const linkMark = marks.find((mark) => mark.type.name === "link");
+    if (!linkMark) return true;
+    const attrs = linkMark.attrs as any;
+    const href = attrs.href ?? "";
+    if (!href) return true;
+    items.push({
+      id: `${pos}-${href}`,
+      href,
+      text: node.text ?? "",
+      type: resolveLinkType(attrs, href),
+      target: attrs.target ?? null,
+      rel: attrs.rel ?? null,
+      from: pos,
+      to: pos + node.nodeSize,
+      dataPostId: attrs["data-post-id"] ?? null,
+      dataEntityType: attrs["data-entity-type"] ?? attrs["data-entity"] ?? null,
+    });
+    return true;
+  });
+
+  return items;
+}
+
+async function readImageMeta(file: File) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    const loaded = new Promise<{ width: number; height: number }>((resolve, reject) => {
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => reject(new Error("Image load failed"));
+    });
+    img.src = url;
+    return await loaded;
+  } catch {
+    return { width: 0, height: 0 };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function updateImageById(editor: Editor | null, id: string, attrs: Record<string, any>) {
+  if (!editor) return;
+  editor.commands.command(({ tr }) => {
+    let updated = false;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === "image" && node.attrs["data-id"] === id) {
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs });
+        updated = true;
+        return false;
+      }
+      return true;
+    });
+    return updated;
+  });
+}
+
+function updateImageBySrc(editor: Editor | null, src: string, attrs: Record<string, any>) {
+  if (!editor) return;
+  editor.commands.command(({ tr }) => {
+    let updated = false;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === "image" && node.attrs.src === src) {
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs });
+        updated = true;
+      }
+      return true;
+    });
+    return updated;
+  });
+}
+
+function updateClosestNodeAttrs(
+  editor: Editor | null,
+  nodeTypeName: string,
+  updater: (attrs: Record<string, any>) => Record<string, any>
+) {
+  if (!editor) return false;
+  return editor.commands.command(({ tr, state }) => {
+    const selectionAny = state.selection as any;
+    if (selectionAny?.node?.type?.name === nodeTypeName && Number.isFinite(selectionAny.from)) {
+      const nextAttrs = updater((selectionAny.node.attrs as Record<string, any>) || {});
+      tr.setNodeMarkup(selectionAny.from, undefined, nextAttrs);
+      return true;
+    }
+
+    const { $from } = state.selection;
+    for (let depth = $from.depth; depth >= 0; depth -= 1) {
+      const node = $from.node(depth);
+      if (node.type.name !== nodeTypeName) continue;
+      const pos = depth > 0 ? $from.before(depth) : 0;
+      const nextAttrs = updater((node.attrs as Record<string, any>) || {});
+      tr.setNodeMarkup(pos, undefined, nextAttrs);
+      return true;
+    }
+
+    const nodeAtSelection = state.doc.nodeAt(state.selection.from);
+    if (nodeAtSelection?.type?.name === nodeTypeName) {
+      const nextAttrs = updater((nodeAtSelection.attrs as Record<string, any>) || {});
+      tr.setNodeMarkup(state.selection.from, undefined, nextAttrs);
+      return true;
+    }
+
+    let closestPos: number | null = null;
+    let closestAttrs: Record<string, any> | null = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    const targetPos = state.selection.from;
+    state.doc.descendants((node, pos) => {
+      if (node.type.name !== nodeTypeName) return true;
+      const distance = Math.abs(pos - targetPos);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestPos = pos;
+        closestAttrs = (node.attrs as Record<string, any>) || {};
+      }
+      return true;
+    });
+
+    if (closestPos !== null && closestAttrs) {
+      const nextAttrs = updater(closestAttrs);
+      tr.setNodeMarkup(closestPos, undefined, nextAttrs);
+      return true;
+    }
+
+    return false;
+  });
+}
+
+function normalizeHiddenColumnsInput(value: string | null | undefined) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const tokens = raw
+    .split(/[\s,;|]+/)
+    .map((item) => Number.parseInt(item, 10))
+    .filter((item) => Number.isFinite(item) && item > 0)
+    .map((item) => String(item));
+  if (!tokens.length) return "";
+  return `|${Array.from(new Set(tokens)).join("|")}|`;
+}
+
+function normalizeColumnWidthsInput(value: string | null | undefined) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return [];
+  const parts = raw
+    .split(/[\s,;|]+/)
+    .map((item) => Number.parseFloat(item))
+    .filter((item) => Number.isFinite(item) && item > 0)
+    .map((item) => Math.round(item * 100) / 100);
+  return Array.from(new Set(parts));
+}
+
+function normalizeStackKeyColumnInput(value: unknown) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+function parseHiddenColumnsTokens(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return [];
+  const tokens = raw
+    .split(/[\s,;|]+/)
+    .map((item) => Number.parseInt(item, 10))
+    .filter((item) => Number.isFinite(item) && item > 0);
+  return Array.from(new Set(tokens));
+}
+
+function normalizeColumnWidthsArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item) && item > 0)
+    .map((item) => Math.round(item * 100) / 100);
+}
+
+function syncTableLayoutAttrs(attrs: Record<string, any>) {
+  const desktop = getBpAttrs(attrs, "desktop");
+  const tablet = getBpAttrs(attrs, "tablet");
+  const mobile = getBpAttrs(attrs, "mobile");
+  return {
+    ...attrs,
+    layout: {
+      desktop: {
+        renderMode: desktop.renderMode || "table",
+        wrap: Boolean(desktop.wrapCells ?? true),
+        hideColumns: parseHiddenColumnsTokens(desktop.hiddenColumns),
+        columnWidths: normalizeColumnWidthsArray(desktop.columnWidths),
+        keyColumn: normalizeStackKeyColumnInput(desktop.stackKeyColumn),
+      },
+      tablet: {
+        renderMode: tablet.renderMode || desktop.renderMode || "table",
+        wrap: Boolean(tablet.wrapCells ?? desktop.wrapCells ?? true),
+        hideColumns: parseHiddenColumnsTokens(tablet.hiddenColumns),
+        columnWidths: normalizeColumnWidthsArray(tablet.columnWidths),
+        keyColumn: normalizeStackKeyColumnInput(tablet.stackKeyColumn ?? desktop.stackKeyColumn),
+      },
+      mobile: {
+        renderMode: mobile.renderMode || tablet.renderMode || desktop.renderMode || "stack",
+        wrap: Boolean(mobile.wrapCells ?? tablet.wrapCells ?? desktop.wrapCells ?? true),
+        hideColumns: parseHiddenColumnsTokens(mobile.hiddenColumns),
+        columnWidths: normalizeColumnWidthsArray(mobile.columnWidths),
+        keyColumn: normalizeStackKeyColumnInput(
+          mobile.stackKeyColumn ?? tablet.stackKeyColumn ?? desktop.stackKeyColumn
+        ),
+      },
+    },
+  };
+}
+
+function moveSelectedTopLevelBlock(editor: Editor | null, direction: "up" | "down") {
+  if (!editor) return false;
+  return editor.commands.command(({ tr, state, dispatch }) => {
+    const { doc, selection } = state;
+    if (doc.childCount <= 1) return false;
+    const currentPos =
+      selection.$from.depth >= 1
+        ? selection.$from.before(1)
+        : Math.max(0, selection.from);
+    let currentIndex = -1;
+    const blocks: Array<{ pos: number; nodeSize: number }> = [];
+    let pos = 0;
+    doc.forEach((node) => {
+      blocks.push({ pos, nodeSize: node.nodeSize });
+      pos += node.nodeSize;
+    });
+    currentIndex = blocks.findIndex((block) => block.pos === currentPos);
+    if (currentIndex < 0) return false;
+
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= blocks.length) return false;
+
+    const current = blocks[currentIndex];
+    const target = blocks[targetIndex];
+    const movedSlice = tr.doc.slice(current.pos, current.pos + current.nodeSize);
+    tr.delete(current.pos, current.pos + current.nodeSize);
+
+    let insertPos = target.pos;
+    if (direction === "down") {
+      insertPos = target.pos - current.nodeSize + target.nodeSize;
+    }
+    tr.insert(insertPos, movedSlice.content);
+
+    const mappedPos = tr.mapping.map(insertPos);
+    tr.setSelection(NodeSelection.create(tr.doc, mappedPos));
+    if (dispatch) dispatch(tr.scrollIntoView());
+    return true;
+  });
+}
+
+function defaultDoc(meta: EditorMeta) {
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "text",
+            text: meta.targetKeyword ? `Comece falando sobre ${meta.targetKeyword}.` : "Comece a escrever seu review.",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function normalizeEditorDoc(doc: any) {
+  if (!doc || typeof doc !== "object") return doc;
+  const clone = Array.isArray(doc) ? [...doc] : { ...doc };
+
+  const walk = (node: any): any => {
+    if (!node || typeof node !== "object") return node;
+    const next = { ...node };
+    if (next.type === "affiliateCta") {
+      next.type = "cta_button";
+      next.attrs = {
+        label: next.attrs?.label ?? "VERIFICAR DISPONIBILIDADE",
+        href: next.attrs?.url ?? next.attrs?.href ?? "",
+        variant: "amazon_primary",
+        size: "md",
+        align: "center",
+      };
+    }
+    if (Array.isArray(next.content)) {
+      next.content = next.content.map(walk);
+    }
+    return next;
+  };
+
+  return walk(clone);
+}
+
+export function AdvancedEditor({ post, silos: initialSilos = [] }: Props) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const highlightOccurrenceId = searchParams.get("highlightOccurrenceId");
+  const openLinkDialogParam = searchParams.get("openLinkDialog");
+  const autoUnlinkParam = searchParams.get("autoUnlink");
+  const shouldAutoUnlink = autoUnlinkParam === "1" || autoUnlinkParam === "true";
+  const metaFromJson = (post.content_json as any)?.meta ?? {};
+  const eeatDefaults = resolveDefaultEeat({
+    authorName: post.author_name ?? "",
+    expertName: post.expert_name ?? "",
+    expertRole: post.expert_role ?? "",
+    expertBio: post.expert_bio ?? "",
+    expertCredentials: post.expert_credentials ?? "",
+    reviewedBy: post.reviewed_by ?? "",
+    disclaimer: post.disclaimer ?? "",
+    authorLinks: Array.isArray(metaFromJson.authorLinks) ? metaFromJson.authorLinks : [],
+  });
+  const [meta, updateMeta] = useReducer(
+    (state: EditorMeta, patch: MetaPatch) => ({ ...state, ...patch }),
+    {
+      title: post.title ?? "",
+      metaTitle: post.meta_title ?? post.seo_title ?? post.title ?? "",
+      slug: post.slug ?? "",
+      targetKeyword: post.target_keyword ?? "",
+      metaDescription: post.meta_description ?? "",
+      supportingKeywords: Array.isArray(post.supporting_keywords) ? post.supporting_keywords : [],
+      entities: Array.isArray(post.entities) ? post.entities : [],
+      schemaType: (post.schema_type as EditorMeta["schemaType"]) ?? "article",
+      status: (post.status as EditorMeta["status"]) ?? (post.published ? "published" : "draft"),
+      scheduledAt: toLocalInput(post.scheduled_at),
+      canonicalPath: resolvePostCanonicalPath(post.canonical_path, post.silo?.slug, post.slug),
+      heroImageUrl: post.hero_image_url ?? "",
+      heroImageAlt: post.hero_image_alt ?? "",
+      ogImageUrl: post.og_image_url ?? "",
+      images: Array.isArray(post.images) ? (post.images as ImageAsset[]) : [],
+      authorName: eeatDefaults.authorName,
+      expertName: eeatDefaults.expertName,
+      expertRole: eeatDefaults.expertRole,
+      expertBio: eeatDefaults.expertBio,
+      expertCredentials: eeatDefaults.expertCredentials,
+      reviewedBy: eeatDefaults.reviewedBy,
+      reviewedAt: toLocalInput(post.reviewed_at),
+      authorLinks: eeatDefaults.authorLinks,
+      sources: Array.isArray(post.sources) ? post.sources : [],
+      disclaimer: eeatDefaults.disclaimer,
+      faq: Array.isArray(post.faq_json) ? post.faq_json : [],
+      howto: Array.isArray(post.howto_json) ? post.howto_json : [],
+      amazonProducts: Array.isArray(post.amazon_products) ? post.amazon_products : [],
+      siloId: post.silo_id ?? "",
+      siloRole: post.silo_role ?? "SUPPORT",
+      siloPosition: undefined,
+      siloOrder:
+        typeof post.silo_order === "number" && Number.isFinite(post.silo_order)
+          ? Math.max(0, Math.trunc(post.silo_order))
+          : typeof post.silo_group_order === "number" && Number.isFinite(post.silo_group_order)
+            ? Math.max(0, Math.trunc(post.silo_group_order))
+            : 0,
+      siloGroup: normalizeSiloGroup(post.silo_group),
+      siloGroupOrder:
+        typeof post.silo_order === "number" && Number.isFinite(post.silo_order)
+          ? Math.max(0, Math.trunc(post.silo_order))
+          : typeof post.silo_group_order === "number" && Number.isFinite(post.silo_group_order)
+            ? Math.max(0, Math.trunc(post.silo_group_order))
+            : 0,
+      showInSiloMenu:
+        post.silo_role === "AUX" ? false : typeof post.show_in_silo_menu === "boolean" ? post.show_in_silo_menu : true,
+      replaceExistingPillar: false,
+    }
+  );
+
+  const metaRef = useRef(meta);
+  const [silos, setSilos] = useState<Silo[]>(initialSilos);
+  const [slugTouched, setSlugTouched] = useState(() => {
+    const initialTitle = post.title ?? "";
+    const initialSlug = post.slug ?? "";
+    return Boolean(initialSlug && slugify(initialTitle) !== initialSlug);
+  });
+  const [metaTitleTouched, setMetaTitleTouched] = useState(false);
+  const [slugStatus, setSlugStatus] = useState<"idle" | "checking" | "ok" | "taken">("idle");
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [docJson, setDocJson] = useState<any>(normalizeEditorDoc(post.content_json ?? null));
+  const [docHtml, setDocHtml] = useState<string>(post.content_html ?? "");
+  const [docText, setDocText] = useState<string>("");
+  const [outline, setOutline] = useState<OutlineItem[]>([]);
+  const [links, setLinks] = useState<LinkItem[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [previewMode, setPreviewMode] = useState<"desktop" | "tablet" | "mobile">("desktop");
+  const [pillarConflictPrompt, setPillarConflictPrompt] = useState<PillarConflictPrompt | null>(null);
+  const [resolvingPillarConflict, setResolvingPillarConflict] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState<{
+    from: number;
+    to: number;
+    originalText: string;
+    improvedText: string;
+    explanation: string;
+  } | null>(null);
+
+  const heroInputRef = useRef<HTMLInputElement | null>(null);
+  const bodyInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadDropRef = useRef<((file: File, pos?: number) => void) | null>(null);
+  const autoTimer = useRef<NodeJS.Timeout | null>(null);
+  const dirtyRef = useRef(false);
+  const silosRefreshRef = useRef(false);
+  const openedHighlightRef = useRef<string | null>(null);
+  const autoUnlinkedOccurrenceRef = useRef<string | null>(null);
+
+  const currentSilo = useMemo(() => {
+    if (meta.siloId && silos.length) {
+      return silos.find((silo) => silo.id === meta.siloId) ?? null;
+    }
+    if (post.silo) {
+      return { id: post.silo_id ?? "", name: post.silo.name, slug: post.silo.slug } as Silo;
+    }
+    return null;
+  }, [meta.siloId, post.silo, post.silo_id, silos]);
+
+  const siloSlug = currentSilo?.slug ?? "";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("editor-preview-mode-change", { detail: previewMode }));
+  }, [previewMode]);
+
+  useEffect(() => {
+    metaRef.current = meta;
+  }, [meta]);
+
+  useEffect(() => {
+    if (!metaTitleTouched && meta.metaTitle !== meta.title) {
+      updateMeta({ metaTitle: meta.title });
+    }
+  }, [meta.title, meta.metaTitle, metaTitleTouched]);
+
+  useEffect(() => {
+    const nextCanonicalPath = resolvePostCanonicalPath(meta.canonicalPath, siloSlug, meta.slug);
+    if (nextCanonicalPath === meta.canonicalPath) return;
+
+    metaRef.current = { ...metaRef.current, canonicalPath: nextCanonicalPath };
+    updateMeta({ canonicalPath: nextCanonicalPath });
+  }, [meta.canonicalPath, meta.slug, siloSlug]);
+
+  // HYDRATION: Sync state from 'post' prop if it changes
+  useEffect(() => {
+    if (!post) return;
+
+    // Parse meta from json if needed
+    const metaFromJson = (post.content_json as any)?.meta ?? {};
+    const nextEeatDefaults = resolveDefaultEeat({
+      authorName: post.author_name ?? "",
+      expertName: post.expert_name ?? "",
+      expertRole: post.expert_role ?? "",
+      expertBio: post.expert_bio ?? "",
+      expertCredentials: post.expert_credentials ?? "",
+      reviewedBy: post.reviewed_by ?? "",
+      disclaimer: post.disclaimer ?? "",
+      authorLinks: Array.isArray(metaFromJson.authorLinks) ? metaFromJson.authorLinks : [],
+    });
+
+    updateMeta({
+      title: post.title ?? "",
+      metaTitle: post.meta_title ?? post.seo_title ?? post.title ?? "",
+      slug: post.slug ?? "",
+      targetKeyword: post.target_keyword ?? "",
+      metaDescription: post.meta_description ?? "",
+      supportingKeywords: Array.isArray(post.supporting_keywords) ? post.supporting_keywords : [],
+      entities: Array.isArray(post.entities) ? post.entities : [],
+      schemaType: (post.schema_type as EditorMeta["schemaType"]) ?? "article",
+      status: (post.status as EditorMeta["status"]) ?? (post.published ? "published" : "draft"),
+      scheduledAt: toLocalInput(post.scheduled_at),
+      canonicalPath: resolvePostCanonicalPath(post.canonical_path, post.silo?.slug, post.slug),
+      heroImageUrl: post.hero_image_url ?? "",
+      heroImageAlt: post.hero_image_alt ?? "",
+      ogImageUrl: post.og_image_url ?? "",
+      images: Array.isArray(post.images) ? (post.images as ImageAsset[]) : [],
+      authorName: nextEeatDefaults.authorName,
+      expertName: nextEeatDefaults.expertName,
+      expertRole: nextEeatDefaults.expertRole,
+      expertBio: nextEeatDefaults.expertBio,
+      amazonProducts: Array.isArray(post.amazon_products) ? post.amazon_products : [],
+      expertCredentials: nextEeatDefaults.expertCredentials,
+      reviewedBy: nextEeatDefaults.reviewedBy,
+      reviewedAt: toLocalInput(post.reviewed_at),
+      authorLinks: nextEeatDefaults.authorLinks,
+      sources: Array.isArray(post.sources) ? post.sources : [],
+      disclaimer: nextEeatDefaults.disclaimer,
+      faq: Array.isArray(post.faq_json) ? post.faq_json : [],
+      howto: Array.isArray(post.howto_json) ? post.howto_json : [],
+      siloId: post.silo_id ?? "",
+      siloRole: post.silo_role ?? "SUPPORT",
+      siloPosition: undefined,
+      siloOrder:
+        typeof post.silo_order === "number" && Number.isFinite(post.silo_order)
+          ? Math.max(0, Math.trunc(post.silo_order))
+          : typeof post.silo_group_order === "number" && Number.isFinite(post.silo_group_order)
+            ? Math.max(0, Math.trunc(post.silo_group_order))
+            : 0,
+      siloGroup: normalizeSiloGroup(post.silo_group),
+      siloGroupOrder:
+        typeof post.silo_order === "number" && Number.isFinite(post.silo_order)
+          ? Math.max(0, Math.trunc(post.silo_order))
+          : typeof post.silo_group_order === "number" && Number.isFinite(post.silo_group_order)
+            ? Math.max(0, Math.trunc(post.silo_group_order))
+            : 0,
+      showInSiloMenu:
+        post.silo_role === "AUX" ? false : typeof post.show_in_silo_menu === "boolean" ? post.show_in_silo_menu : true,
+      replaceExistingPillar: false,
+    });
+
+    setDocJson(normalizeEditorDoc(post.content_json ?? null));
+    setDocHtml(post.content_html ?? "");
+    setSlugTouched(Boolean(post.slug && slugify(post.title ?? "") !== (post.slug ?? "")));
+
+    // Also ensure editor content is updated if editor instance exists? 
+    // Usually Tiptap handles content update via useEditor({ content }) but if content changes later need commands.setContent
+    // But be careful not to overwrite unsaved changes if 'post' prop updates from a revalidation while editing.
+    // For now, assume this effect is mostly for initial hydration or explicit resets.
+  }, [post]);
+
+  // Also sync silos if initialSilos changes
+  useEffect(() => {
+    if (initialSilos.length) setSilos(initialSilos);
+  }, [initialSilos]);
+
+  // Load silo organization (role + order + group visibility) from database
+  useEffect(() => {
+    const activeSiloId = meta.siloId || post.silo_id || "";
+    if (!activeSiloId || !post.id) return;
+
+    const controller = new AbortController();
+
+    async function loadHierarchy() {
+      try {
+        const response = await fetch(`/api/admin/silo-posts?siloId=${activeSiloId}&postId=${post.id}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+
+        const currentSiloId = metaRef.current.siloId || post.silo_id || "";
+        if (currentSiloId !== activeSiloId) {
+          return;
+        }
+
+        const hasStoredRole = data?.role === "PILLAR" || data?.role === "SUPPORT" || data?.role === "AUX";
+        const hasStoredPosition = typeof data?.position === "number" && Number.isFinite(data.position);
+        const hasStoredOrder = typeof data?.silo_order === "number" && Number.isFinite(data.silo_order);
+        const hasStoredGroup = typeof data?.silo_group === "string" && data.silo_group.trim().length > 0;
+        const hasStoredShowInSiloMenu = typeof data?.show_in_silo_menu === "boolean";
+        const role = hasStoredRole ? data.role : metaRef.current.siloRole || "SUPPORT";
+        const resolvedOrder =
+          role === "PILLAR" || role === "AUX"
+            ? 0
+            : hasStoredOrder
+              ? Math.max(0, Math.trunc(data.silo_order))
+              : typeof metaRef.current.siloOrder === "number" && Number.isFinite(metaRef.current.siloOrder)
+                ? Math.max(0, Math.trunc(metaRef.current.siloOrder))
+                : typeof metaRef.current.siloGroupOrder === "number" && Number.isFinite(metaRef.current.siloGroupOrder)
+                  ? Math.max(0, Math.trunc(metaRef.current.siloGroupOrder))
+                  : 0;
+        const resolvedGroup = normalizeSiloGroup(data?.silo_group);
+        const showInSiloMenu =
+          role === "AUX"
+            ? false
+            : hasStoredShowInSiloMenu
+              ? data.show_in_silo_menu
+              : typeof metaRef.current.showInSiloMenu === "boolean"
+                ? metaRef.current.showInSiloMenu
+                : true;
+
+        updateMeta({
+          siloRole: role,
+          siloPosition: hasStoredPosition
+            ? Math.max(1, Math.trunc(data.position))
+            : metaRef.current.siloPosition,
+          siloOrder: resolvedOrder,
+          siloGroupOrder: resolvedOrder,
+          siloGroup:
+            role === "PILLAR" || role === "AUX"
+              ? null
+              : hasStoredGroup
+                ? resolvedGroup
+                : metaRef.current.siloGroup ?? null,
+          showInSiloMenu,
+        });
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        console.error("Erro ao carregar hierarquia do silo:", error);
+      }
+    }
+
+    void loadHierarchy();
+    return () => controller.abort();
+  }, [meta.siloId, post]);
+
+  useEffect(() => {
+    if (!slugTouched) {
+      const next = slugify(meta.title);
+      if (next && next !== meta.slug) {
+        updateMeta({ slug: next });
+      }
+    }
+  }, [meta.title, meta.slug, slugTouched]);
+
+  useEffect(() => {
+    const slug = meta.slug.trim();
+    if (!slug) {
+      setSlugStatus("idle");
+      return;
+    }
+    const controller = new AbortController();
+    const handle = setTimeout(() => {
+      setSlugStatus("checking");
+      const params = new URLSearchParams({
+        slug,
+        siloId: meta.siloId ?? "",
+        id: post.id,
+      });
+      fetch(`/api/admin/slug-check?${params.toString()}`, { signal: controller.signal })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.available) {
+            setSlugStatus("ok");
+          } else {
+            setSlugStatus("taken");
+          }
+        })
+        .catch(() => setSlugStatus("idle"));
+    }, 450);
+
+    return () => {
+      controller.abort();
+      clearTimeout(handle);
+    };
+  }, [meta.slug, meta.siloId, post.id]);
+
+  const refreshSilos = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/silos");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data?.items)) {
+        setSilos(data.items);
+      }
+    } catch {
+      return;
+    }
+  }, []);
+
+  const createSilo = useCallback(async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    try {
+      const res = await fetch("/api/admin/silos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const item = data?.item as Silo | undefined;
+      if (item) {
+        setSilos((prev) => (prev.some((silo) => silo.id === item.id) ? prev : [...prev, item]));
+      }
+      return item ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (silos.length > 0) return;
+    if (silosRefreshRef.current) return;
+    silosRefreshRef.current = true;
+    void refreshSilos();
+  }, [refreshSilos, silos.length]);
+
+  const editorExtensions = useMemo(
+    () => [
+      StarterKit.configure({
+        heading: { levels: [2, 3, 4] },
+      }),
+      Underline,
+      Highlight.configure({ multicolor: true }),
+      LockedTable.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      EntityLink.configure({ openOnClick: false }),
+      EditorImage,
+      YoutubeEmbed,
+      InternalLinkMention,
+      InternalLinkCandidate,
+      FindInContent,
+      AffiliateProductCard,
+      CtaButton,
+      FaqBlock,
+      IconBlock,
+      CarouselBlock,
+      Placeholder.configure({
+        placeholder: "Escreva aqui. Use a barra fixa para inserir blocos.",
+      }),
+    ],
+    []
+  );
+
+  const initialEditorContent = useMemo(
+    () =>
+      normalizeEditorDoc(post.content_json) ||
+      post.content_html ||
+      defaultDoc({ ...(metaRef.current as EditorMeta), targetKeyword: post.target_keyword ?? "" }),
+    [post.content_json, post.content_html, post.target_keyword]
+  );
+
+  const handleEditorDrop = useCallback((view: any, event: DragEvent) => {
+    const hasFiles = event.dataTransfer?.files && event.dataTransfer.files.length > 0;
+    if (!hasFiles) return false;
+    const file = event.dataTransfer?.files?.[0];
+    if (!file || !file.type.startsWith("image/")) return false;
+    event.preventDefault();
+    const coords = { left: event.clientX, top: event.clientY };
+    const pos = view.posAtCoords(coords)?.pos;
+    if (!pos) return false;
+    uploadDropRef.current?.(file, pos);
+    return true;
+  }, []);
+
+  const handleEditorUpdate = useCallback(({ editor: currentEditor }: { editor: Editor }) => {
+    setDocJson(currentEditor.getJSON());
+    setDocHtml(currentEditor.getHTML());
+    setDocText(currentEditor.getText());
+    setOutline(extractOutline(currentEditor));
+    setLinks(extractLinks(currentEditor));
+    dirtyRef.current = true;
+  }, []);
+
+  const editorOptions = useMemo(
+    () => ({
+      immediatelyRender: false,
+      extensions: editorExtensions,
+      content: initialEditorContent,
+      editorProps: {
+        attributes: {
+          class: "editor-content min-h-[520px] outline-none prose max-w-none",
+        },
+        transformPastedHTML: (html: string) => transformGoogleDocsPaste(html),
+        handleDrop: handleEditorDrop,
+      },
+      onUpdate: handleEditorUpdate,
+    }),
+    [editorExtensions, handleEditorDrop, handleEditorUpdate, initialEditorContent]
+  );
+
+  const editor = useEditor(editorOptions, [post.id]);
+
+  useEffect(() => {
+    if (!editor || !highlightOccurrenceId) return;
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        const res = await fetch(`/api/admin/link-occurrences/${highlightOccurrenceId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const occurrence = data?.occurrence as HighlightOccurrence | undefined;
+        if (!occurrence) return;
+        setTimeout(() => {
+          if (editor.isDestroyed) return;
+          const highlighted = highlightOccurrenceInEditor(editor, occurrence);
+          if (highlighted && shouldAutoUnlink && autoUnlinkedOccurrenceRef.current !== highlightOccurrenceId) {
+            autoUnlinkedOccurrenceRef.current = highlightOccurrenceId;
+            const removed = editor.chain().focus().extendMarkRange("link").unsetLink().run();
+            if (!removed) {
+              const { from, to } = editor.state.selection;
+              if (to > from) {
+                const plainText = editor.state.doc.textBetween(from, to, " ", " ");
+                editor.chain().focus().deleteRange({ from, to }).insertContentAt(from, plainText).run();
+              }
+            }
+            return;
+          }
+          if (highlighted && openLinkDialogParam && openedHighlightRef.current !== highlightOccurrenceId) {
+            openedHighlightRef.current = highlightOccurrenceId;
+            setLinkDialogOpen(true);
+          }
+        }, 200);
+      } catch (error) {
+        console.error("Erro ao buscar ocorrência para highlight:", error);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [editor, highlightOccurrenceId, openLinkDialogParam, shouldAutoUnlink]);
+
+  useEffect(() => {
+    if (!editor) return;
+    setOutline(extractOutline(editor));
+    setLinks(extractLinks(editor));
+    setDocJson(editor.getJSON());
+    setDocHtml(editor.getHTML());
+    setDocText(editor.getText());
+    dirtyRef.current = true;
+  }, [editor]);
+
+  useEffect(() => {
+    const nextImages = buildActiveImageLibrary(
+      metaRef.current.images ?? [],
+      docJson,
+      metaRef.current.heroImageUrl,
+      metaRef.current.heroImageAlt
+    );
+    if (areImageAssetsEqual(metaRef.current.images ?? [], nextImages)) return;
+
+    dirtyRef.current = true;
+    metaRef.current = { ...metaRef.current, images: nextImages };
+    updateMeta({ images: nextImages });
+  }, [docJson, meta.heroImageAlt, meta.heroImageUrl]);
+
+  const handleMetaChange = useCallback(
+    (patch: MetaPatch) => {
+      if (typeof patch.slug === "string") setSlugTouched(true);
+      if (typeof patch.metaTitle === "string") setMetaTitleTouched(true);
+      dirtyRef.current = true;
+      metaRef.current = { ...metaRef.current, ...patch };
+      updateMeta(patch);
+    },
+    [updateMeta]
+  );
+
+  const uploadFile = useCallback(
+    async (file: File, options: { alt: string; kind: "hero" | "body"; width?: number; height?: number }) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("postId", post.id);
+      formData.append("siloSlug", siloSlug);
+      formData.append("postSlug", metaRef.current.slug || post.slug);
+      formData.append("alt", options.alt);
+      formData.append("kind", options.kind);
+      if (options.width) formData.append("width", String(options.width));
+      if (options.height) formData.append("height", String(options.height));
+
+      const res = await fetch("/api/admin/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Upload failed");
+      }
+
+      return (await res.json()) as {
+        url: string;
+        fileName?: string;
+        width?: number;
+        height?: number;
+        createdAt?: string;
+      };
+    },
+    [post.id, post.slug, siloSlug]
+  );
+
+  const uploadHero = useCallback(
+    async (file: File) => {
+      try {
+        const alt = metaRef.current.heroImageAlt || metaRef.current.title || "Hero image";
+        const metaData = await readImageMeta(file);
+        const result = await uploadFile(file, { alt, kind: "hero", width: metaData.width, height: metaData.height });
+        const nextImages = buildActiveImageLibrary(
+          [
+            ...(metaRef.current.images ?? []),
+            {
+              url: result.url,
+              alt,
+              width: result.width ?? metaData.width,
+              height: result.height ?? metaData.height,
+              fileName: result.fileName,
+              createdAt: result.createdAt,
+            },
+          ],
+          editor ? editor.getJSON() : docJson,
+          result.url,
+          alt
+        );
+
+        handleMetaChange({
+          heroImageUrl: result.url,
+          ogImageUrl: metaRef.current.ogImageUrl || result.url,
+          heroImageAlt: alt,
+          images: nextImages,
+        });
+      } catch (error: any) {
+        console.error("Falha ao enviar imagem de capa", error);
+        const message =
+          typeof error?.message === "string" && error.message.trim()
+            ? error.message
+            : "Nao foi possivel enviar a imagem de capa.";
+        alert(message);
+      }
+    },
+    [docJson, editor, handleMetaChange, uploadFile]
+  );
+
+  const uploadAndInsertImage = useCallback(
+    async (file: File, insertPos?: number) => {
+      if (!editor) return;
+      const uploadId = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const localUrl = URL.createObjectURL(file);
+      const metaData = await readImageMeta(file);
+      const alt = metaRef.current.title ? `${metaRef.current.title} imagem` : "Imagem";
+
+      const attrs = {
+        src: localUrl,
+        alt,
+        title: "",
+        width: metaData.width || null,
+        height: metaData.height || null,
+        "data-id": uploadId,
+        "data-uploading": "true",
+        align: "center",
+        "data-align": "center",
+        widthMode: "content",
+        maxWidth: null,
+        wrap: "none",
+        spacingY: "md",
+        visibleDesktop: true,
+        visibleTablet: true,
+        visibleMobile: true,
+        responsive: null,
+        "data-tablet-align": null,
+        "data-mobile-align": null,
+      };
+
+      if (typeof insertPos === "number") {
+        editor.chain().focus().insertContentAt(insertPos, { type: "image", attrs }).run();
+      } else {
+        editor.chain().focus().insertContent({ type: "image", attrs }).run();
+      }
+
+      try {
+        const result = await uploadFile(file, { alt, kind: "body", width: metaData.width, height: metaData.height });
+        updateImageById(editor, uploadId, {
+          src: result.url,
+          "data-uploading": null,
+          width: result.width ?? metaData.width ?? null,
+          height: result.height ?? metaData.height ?? null,
+        });
+
+        const nextImages = [
+          ...metaRef.current.images,
+          {
+            url: result.url,
+            alt,
+            width: result.width ?? metaData.width,
+            height: result.height ?? metaData.height,
+            fileName: result.fileName,
+            createdAt: result.createdAt,
+          },
+        ];
+        updateMeta({
+          images: buildActiveImageLibrary(
+            nextImages,
+            editor.getJSON(),
+            metaRef.current.heroImageUrl,
+            metaRef.current.heroImageAlt
+          ),
+        });
+      } finally {
+        URL.revokeObjectURL(localUrl);
+      }
+    },
+    [editor, uploadFile]
+  );
+
+  useEffect(() => {
+    uploadDropRef.current = uploadAndInsertImage;
+  }, [uploadAndInsertImage]);
+
+  const onInsertImage = useCallback(
+    (asset: ImageAsset) => {
+      if (!editor) return;
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "image",
+          attrs: {
+            src: asset.url,
+            alt: asset.alt,
+            width: asset.width ?? null,
+            height: asset.height ?? null,
+            align: "center",
+            "data-align": "center",
+            widthMode: "content",
+            maxWidth: null,
+            wrap: "none",
+            spacingY: "md",
+            visibleDesktop: true,
+            visibleTablet: true,
+            visibleMobile: true,
+            responsive: null,
+            "data-tablet-align": null,
+            "data-mobile-align": null,
+          },
+        })
+        .run();
+    },
+    [editor]
+  );
+
+  const onUpdateImageAlt = useCallback(
+    (url: string, alt: string) => {
+      const nextImages = metaRef.current.images.map((image) => (image.url === url ? { ...image, alt } : image));
+      updateMeta({ images: nextImages });
+      updateImageBySrc(editor, url, { alt });
+    },
+    [editor]
+  );
+
+  const onRemoveImage = useCallback(
+    (url: string) => {
+      const nextHeroImageUrl = metaRef.current.heroImageUrl === url ? "" : metaRef.current.heroImageUrl;
+      const nextHeroImageAlt = metaRef.current.heroImageUrl === url ? "" : metaRef.current.heroImageAlt;
+      const nextImages = buildActiveImageLibrary(
+        metaRef.current.images.filter((image) => image.url !== url),
+        editor ? editor.getJSON() : docJson,
+        nextHeroImageUrl,
+        nextHeroImageAlt
+      );
+
+      updateMeta({
+        heroImageUrl: nextHeroImageUrl,
+        heroImageAlt: nextHeroImageAlt,
+        images: nextImages,
+      });
+    },
+    [docJson, editor]
+  );
+
+  const onUpdateImageResponsive = useCallback(
+    (patch: {
+      align?: "left" | "center" | "right";
+      widthMode?: "full" | "content" | "px";
+      maxWidth?: number | null;
+      wrap?: "none" | "wrap-left" | "wrap-right";
+      spacingY?: "none" | "sm" | "md" | "lg";
+    }) => {
+      if (!editor) return;
+      const mode = previewMode as ResponsiveMode;
+      updateClosestNodeAttrs(editor, "image", (attrs) => {
+        const withBaseAlign = { ...attrs, align: attrs.align ?? attrs["data-align"] ?? "center" };
+        const next = setBpAttrs(withBaseAlign, mode, patch, {
+          legacyMap: {
+            align: { tablet: "data-tablet-align", mobile: "data-mobile-align" },
+          },
+        });
+
+        if (mode === "desktop" && typeof patch.align === "string") {
+          next["data-align"] = patch.align;
+        }
+        return next;
+      });
+    },
+    [editor, previewMode]
+  );
+
+  const onUpdateImageVisibility = useCallback(
+    (patch: { desktop?: boolean; tablet?: boolean; mobile?: boolean }) => {
+      if (!editor) return;
+      updateClosestNodeAttrs(editor, "image", (attrs) =>
+        setDeviceVisibility(attrs, patch)
+      );
+    },
+    [editor]
+  );
+
+  const onResetImageResponsive = useCallback(
+    (fields?: Array<"align" | "widthMode" | "maxWidth" | "wrap" | "spacingY">) => {
+      if (!editor) return;
+      if (previewMode === "desktop") return;
+      updateClosestNodeAttrs(editor, "image", (attrs) => {
+        const keys = fields ?? ["align", "widthMode", "maxWidth", "wrap", "spacingY"];
+        const next = inheritDesktopToBp(attrs, previewMode, keys, {
+          legacyMap: { align: { tablet: "data-tablet-align", mobile: "data-mobile-align" } },
+        });
+        return next;
+      });
+    },
+    [editor, previewMode]
+  );
+
+  const onClearImageResponsive = useCallback(
+    (fields?: Array<"align" | "widthMode" | "maxWidth" | "wrap" | "spacingY">) => {
+      if (!editor) return;
+      if (previewMode === "desktop") return;
+      updateClosestNodeAttrs(editor, "image", (attrs) => {
+        const keys = fields ?? ["align", "widthMode", "maxWidth", "wrap", "spacingY"];
+        const patch = keys.reduce<Record<string, any>>((acc, key) => {
+          acc[key] = undefined;
+          return acc;
+        }, {});
+        return setBpAttrs(attrs, previewMode, patch, {
+          legacyMap: { align: { tablet: "data-tablet-align", mobile: "data-mobile-align" } },
+        });
+      });
+    },
+    [editor, previewMode]
+  );
+
+  const onAlignImage = useCallback(
+    (align: "left" | "center" | "right") => {
+      onUpdateImageResponsive({ align });
+    },
+    [onUpdateImageResponsive]
+  );
+
+  const onInsertProduct = useCallback(() => {
+    if (!editor) return;
+    editor
+      .chain()
+      .focus()
+      .insertContent({
+        type: "affiliateProduct",
+        attrs: {
+          title: "Produto",
+          image: "",
+          price: "",
+          rating: 0,
+          features: ["Ponto forte 1", "Ponto forte 2", "Ponto forte 3"],
+          href: "",
+          visibleDesktop: true,
+          visibleTablet: true,
+          visibleMobile: true,
+        },
+      })
+      .run();
+  }, [editor]);
+
+  const onInsertYoutube = useCallback(() => {
+    if (!editor) return;
+    const url = window.prompt("URL do YouTube");
+    if (url === null) return;
+    const normalized = normalizeYoutubeUrl(url);
+    editor.chain().focus().insertContent({ type: "youtubeEmbed", attrs: { src: normalized } }).run();
+  }, [editor]);
+
+  const onInsertTable = useCallback(() => {
+    if (!editor) return;
+    editor
+      .chain()
+      .focus()
+      .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+      .updateAttributes("table", {
+        renderMode: "table",
+        renderModeTablet: null,
+        renderModeMobile: "stack",
+        wrapCells: true,
+        wrapCellsTablet: null,
+        wrapCellsMobile: null,
+        hiddenColumns: "",
+        hiddenColumnsTablet: null,
+        hiddenColumnsMobile: null,
+        columnWidths: [],
+        columnWidthsTablet: null,
+        columnWidthsMobile: null,
+        stackKeyColumn: null,
+        stackKeyColumnTablet: null,
+        stackKeyColumnMobile: 2,
+        visibleDesktop: true,
+        visibleTablet: true,
+        visibleMobile: true,
+        responsive: { mobile: { renderMode: "stack", stackKeyColumn: 2 } },
+        layout: {
+          desktop: { renderMode: "table", wrap: true, hideColumns: [], columnWidths: [], keyColumn: null },
+          tablet: { renderMode: "table", wrap: true, hideColumns: [], columnWidths: [], keyColumn: null },
+          mobile: { renderMode: "stack", wrap: true, hideColumns: [], columnWidths: [], keyColumn: 2 },
+        },
+      })
+      .run();
+  }, [editor]);
+
+  const onUpdateTableResponsive = useCallback(
+    (patch: {
+      renderMode?: "table" | "scroll" | "stack";
+      wrapCells?: boolean;
+      hiddenColumns?: string;
+      columnWidths?: string | number[];
+      stackKeyColumn?: number | null;
+    }) => {
+      if (!editor) return;
+      const mode = previewMode as ResponsiveMode;
+      const normalizedPatch: Record<string, unknown> = {};
+      if (Object.prototype.hasOwnProperty.call(patch, "renderMode")) {
+        normalizedPatch.renderMode = patch.renderMode;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "wrapCells")) {
+        normalizedPatch.wrapCells = patch.wrapCells;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "hiddenColumns")) {
+        normalizedPatch.hiddenColumns =
+          typeof patch.hiddenColumns === "string"
+            ? normalizeHiddenColumnsInput(patch.hiddenColumns)
+            : patch.hiddenColumns;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "columnWidths")) {
+        normalizedPatch.columnWidths =
+          typeof patch.columnWidths === "string"
+            ? normalizeColumnWidthsInput(patch.columnWidths)
+            : Array.isArray(patch.columnWidths)
+              ? patch.columnWidths.map((item) => Number(item)).filter((item) => Number.isFinite(item) && item > 0)
+              : patch.columnWidths;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "stackKeyColumn")) {
+        normalizedPatch.stackKeyColumn = normalizeStackKeyColumnInput(patch.stackKeyColumn);
+      }
+      updateClosestNodeAttrs(editor, "table", (attrs) =>
+        syncTableLayoutAttrs(
+          setBpAttrs(attrs, mode, normalizedPatch as Record<string, any>, {
+            legacyMap: {
+              renderMode: { tablet: "renderModeTablet", mobile: "renderModeMobile" },
+              wrapCells: { tablet: "wrapCellsTablet", mobile: "wrapCellsMobile" },
+              hiddenColumns: { tablet: "hiddenColumnsTablet", mobile: "hiddenColumnsMobile" },
+              columnWidths: { tablet: "columnWidthsTablet", mobile: "columnWidthsMobile" },
+              stackKeyColumn: { tablet: "stackKeyColumnTablet", mobile: "stackKeyColumnMobile" },
+            },
+          })
+        )
+      );
+    },
+    [editor, previewMode]
+  );
+
+  const onUpdateTableVisibility = useCallback(
+    (patch: { desktop?: boolean; tablet?: boolean; mobile?: boolean }) => {
+      if (!editor) return;
+      updateClosestNodeAttrs(editor, "table", (attrs) =>
+        syncTableLayoutAttrs(setDeviceVisibility(attrs, patch))
+      );
+    },
+    [editor]
+  );
+
+  const onSetTableRenderMode = useCallback(
+    (renderMode: "table" | "scroll" | "stack") => {
+      onUpdateTableResponsive({ renderMode });
+    },
+    [onUpdateTableResponsive]
+  );
+
+  const onApplyTableMobileSlide = useCallback(() => {
+    if (!editor) return;
+    updateClosestNodeAttrs(editor, "table", (attrs) =>
+      syncTableLayoutAttrs(
+        setBpAttrs(
+          attrs,
+          "mobile",
+          {
+            renderMode: "scroll",
+            wrapCells: false,
+          },
+          {
+            legacyMap: {
+              renderMode: { tablet: "renderModeTablet", mobile: "renderModeMobile" },
+              wrapCells: { tablet: "wrapCellsTablet", mobile: "wrapCellsMobile" },
+              hiddenColumns: { tablet: "hiddenColumnsTablet", mobile: "hiddenColumnsMobile" },
+              columnWidths: { tablet: "columnWidthsTablet", mobile: "columnWidthsMobile" },
+              stackKeyColumn: { tablet: "stackKeyColumnTablet", mobile: "stackKeyColumnMobile" },
+            },
+          }
+        )
+      )
+    );
+  }, [editor]);
+
+  const onApplyTableMobileCards = useCallback(() => {
+    if (!editor) return;
+    updateClosestNodeAttrs(editor, "table", (attrs) =>
+      syncTableLayoutAttrs(
+        setBpAttrs(
+          attrs,
+          "mobile",
+          {
+            renderMode: "stack",
+            wrapCells: true,
+          },
+          {
+            legacyMap: {
+              renderMode: { tablet: "renderModeTablet", mobile: "renderModeMobile" },
+              wrapCells: { tablet: "wrapCellsTablet", mobile: "wrapCellsMobile" },
+              hiddenColumns: { tablet: "hiddenColumnsTablet", mobile: "hiddenColumnsMobile" },
+              columnWidths: { tablet: "columnWidthsTablet", mobile: "columnWidthsMobile" },
+              stackKeyColumn: { tablet: "stackKeyColumnTablet", mobile: "stackKeyColumnMobile" },
+            },
+          }
+        )
+      )
+    );
+  }, [editor]);
+
+  const onResetTableResponsive = useCallback(
+    (fields?: Array<"renderMode" | "wrapCells" | "hiddenColumns" | "columnWidths" | "stackKeyColumn">) => {
+      if (!editor) return;
+      if (previewMode === "desktop") return;
+      updateClosestNodeAttrs(editor, "table", (attrs) => {
+        const keys = fields ?? ["renderMode", "wrapCells", "hiddenColumns", "columnWidths", "stackKeyColumn"];
+        return syncTableLayoutAttrs(
+          inheritDesktopToBp(attrs, previewMode, keys, {
+            legacyMap: {
+              renderMode: { tablet: "renderModeTablet", mobile: "renderModeMobile" },
+              wrapCells: { tablet: "wrapCellsTablet", mobile: "wrapCellsMobile" },
+              hiddenColumns: { tablet: "hiddenColumnsTablet", mobile: "hiddenColumnsMobile" },
+              columnWidths: { tablet: "columnWidthsTablet", mobile: "columnWidthsMobile" },
+              stackKeyColumn: { tablet: "stackKeyColumnTablet", mobile: "stackKeyColumnMobile" },
+            },
+          })
+        );
+      });
+    },
+    [editor, previewMode]
+  );
+
+  const onClearTableResponsive = useCallback(
+    (fields?: Array<"renderMode" | "wrapCells" | "hiddenColumns" | "columnWidths" | "stackKeyColumn">) => {
+      if (!editor) return;
+      if (previewMode === "desktop") return;
+      updateClosestNodeAttrs(editor, "table", (attrs) => {
+        const keys = fields ?? ["renderMode", "wrapCells", "hiddenColumns", "columnWidths", "stackKeyColumn"];
+        const patch = keys.reduce<Record<string, any>>((acc, key) => {
+          acc[key] = undefined;
+          return acc;
+        }, {});
+        return syncTableLayoutAttrs(
+          setBpAttrs(attrs, previewMode, patch, {
+            legacyMap: {
+              renderMode: { tablet: "renderModeTablet", mobile: "renderModeMobile" },
+              wrapCells: { tablet: "wrapCellsTablet", mobile: "wrapCellsMobile" },
+              hiddenColumns: { tablet: "hiddenColumnsTablet", mobile: "hiddenColumnsMobile" },
+              columnWidths: { tablet: "columnWidthsTablet", mobile: "columnWidthsMobile" },
+              stackKeyColumn: { tablet: "stackKeyColumnTablet", mobile: "stackKeyColumnMobile" },
+            },
+          })
+        );
+      });
+    },
+    [editor, previewMode]
+  );
+
+  const onResetTableRenderMode = useCallback(() => {
+    onResetTableResponsive(["renderMode"]);
+  }, [onResetTableResponsive]);
+
+  const onMoveBlockUp = useCallback(() => {
+    moveSelectedTopLevelBlock(editor, "up");
+  }, [editor]);
+
+  const onMoveBlockDown = useCallback(() => {
+    moveSelectedTopLevelBlock(editor, "down");
+  }, [editor]);
+
+  const onInsertFaq = useCallback(() => {
+    if (!editor) return;
+    editor
+      .chain()
+      .focus()
+      .insertContent({
+        type: "faq_block",
+        attrs: {
+          items: [
+            { question: "Qual o melhor produto para iniciantes?", answer: "Escolha modelos com uso simples e boa reputação." },
+            { question: "Vale a pena pagar mais caro?", answer: "Depende da frequência de uso e da durabilidade esperada." },
+          ],
+          renderMode: "expanded",
+          visibleDesktop: true,
+          visibleTablet: true,
+          visibleMobile: true,
+          responsive: null,
+        },
+      })
+      .run();
+  }, [editor]);
+
+  const onInsertIconBlock = useCallback(() => {
+    if (!editor) return;
+    editor
+      .chain()
+      .focus()
+      .insertContent({
+        type: "icon_block",
+        attrs: {
+          title: "Destaques",
+          items: [
+            { icon: "check", text: "Beneficio 1" },
+            { icon: "check", text: "Beneficio 2" },
+            { icon: "star", text: "Diferencial" },
+          ],
+          align: "left",
+          widthMode: "content",
+          spacingY: "md",
+          visibleDesktop: true,
+          visibleTablet: true,
+          visibleMobile: true,
+          responsive: null,
+        },
+      })
+      .run();
+  }, [editor]);
+
+  const onInsertCarouselBlock = useCallback(() => {
+    if (!editor) return;
+    editor
+      .chain()
+      .focus()
+      .insertContent({
+        type: "carousel_block",
+        attrs: {
+          title: "Galeria",
+          slides: [
+            { image: "", caption: "Slide 1" },
+            { image: "", caption: "Slide 2" },
+          ],
+          align: "left",
+          widthMode: "content",
+          slidesPerView: 1,
+          spacingY: "md",
+          visibleDesktop: true,
+          visibleTablet: true,
+          visibleMobile: true,
+          responsive: {
+            tablet: { slidesPerView: 2 },
+            mobile: { slidesPerView: 1 },
+          },
+        },
+      })
+      .run();
+  }, [editor]);
+
+  const onInsertCallout = useCallback(() => {
+    if (!editor) return;
+    editor
+      .chain()
+      .focus()
+      .toggleBlockquote()
+      .run();
+  }, [editor]);
+
+  const onSelectLink = useCallback(
+    (link: LinkItem) => {
+      if (!editor) return;
+      editor.commands.focus();
+      editor.commands.setTextSelection({ from: link.from, to: link.to });
+    },
+    [editor]
+  );
+
+  const onJumpToHeading = useCallback(
+    (pos: number) => {
+      if (!editor) return;
+      editor.commands.focus();
+      editor.commands.setTextSelection(pos);
+    },
+    [editor]
+  );
+
+  const savePost = useCallback(
+    async (
+      nextStatus?: EditorMeta["status"],
+      options?: {
+        forceReplacePillar?: boolean;
+        refreshAfterSave?: boolean;
+        suppressConflictModal?: boolean;
+      }
+    ) => {
+      const statusToSave = nextStatus ?? metaRef.current.status;
+      const canonicalPath = buildPostCanonicalPath(siloSlug, metaRef.current.slug);
+      const role = metaRef.current.siloRole ?? "SUPPORT";
+      const isPillarRole = role === "PILLAR";
+      const isAuxRole = role === "AUX";
+
+      const currentJson = editor ? editor.getJSON() : docJson;
+      const currentHtml = editor ? editor.getHTML() : docHtml;
+      const enrichedJson =
+        currentJson && typeof currentJson === "object"
+          ? {
+              ...currentJson,
+              meta: {
+                ...(currentJson.meta ?? {}),
+                authorLinks: metaRef.current.authorLinks,
+                manualEdits: true,
+                lastEditedAt: new Date().toISOString(),
+              },
+            }
+          : { type: "doc", content: [], meta: { authorLinks: metaRef.current.authorLinks } };
+
+      const safeContentJson = JSON.parse(JSON.stringify(enrichedJson ?? null));
+      const activeImages = buildActiveImageLibrary(
+        metaRef.current.images ?? [],
+        safeContentJson,
+        metaRef.current.heroImageUrl,
+        metaRef.current.heroImageAlt
+      );
+      const computedSiloOrder =
+        typeof metaRef.current.siloOrder === "number" && Number.isFinite(metaRef.current.siloOrder)
+          ? Math.max(0, Math.trunc(metaRef.current.siloOrder))
+          : typeof metaRef.current.siloGroupOrder === "number" && Number.isFinite(metaRef.current.siloGroupOrder)
+            ? Math.max(0, Math.trunc(metaRef.current.siloGroupOrder))
+            : 0;
+      const siloOrder = isPillarRole || isAuxRole ? 0 : computedSiloOrder;
+      const showInSiloMenu =
+        isPillarRole
+          ? true
+          : isAuxRole
+            ? false
+            : typeof metaRef.current.showInSiloMenu === "boolean"
+              ? metaRef.current.showInSiloMenu
+              : true;
+      const siloId = metaRef.current.siloId || post.silo_id || "";
+      if (!siloId) {
+        alert("Selecione um silo no painel Organizacao antes de salvar.");
+        return;
+      }
+
+      const payload = {
+        id: post.id,
+        silo_id: siloId,
+        silo_role: role,
+        silo_position: isPillarRole ? null : metaRef.current.siloPosition || null,
+        title: metaRef.current.title,
+        seo_title: metaRef.current.metaTitle || metaRef.current.title,
+        meta_title: metaRef.current.metaTitle || metaRef.current.title,
+        slug: metaRef.current.slug,
+        target_keyword: metaRef.current.targetKeyword,
+        supporting_keywords: metaRef.current.supportingKeywords ?? [],
+        silo_group: isPillarRole || isAuxRole ? null : metaRef.current.siloGroup ?? null,
+        silo_order: siloOrder,
+        silo_group_order: siloOrder,
+        show_in_silo_menu: showInSiloMenu,
+        replace_existing_pillar: Boolean(options?.forceReplacePillar || metaRef.current.replaceExistingPillar),
+        meta_description: metaRef.current.metaDescription || null,
+        canonical_path: canonicalPath,
+        entities: metaRef.current.entities ?? [],
+        schema_type: metaRef.current.schemaType,
+        faq_json: metaRef.current.faq ?? [],
+        howto_json: metaRef.current.howto ?? [],
+        hero_image_url: metaRef.current.heroImageUrl || null,
+        hero_image_alt: metaRef.current.heroImageAlt || null,
+        og_image_url: metaRef.current.ogImageUrl || null,
+        images: activeImages,
+        author_name: metaRef.current.authorName || null,
+        expert_name: metaRef.current.expertName || null,
+        expert_role: metaRef.current.expertRole || null,
+        expert_bio: metaRef.current.expertBio || null,
+        expert_credentials: metaRef.current.expertCredentials || null,
+        reviewed_by: metaRef.current.reviewedBy || null,
+        reviewed_at: toIsoString(metaRef.current.reviewedAt) ?? null,
+        sources: metaRef.current.sources ?? [],
+        disclaimer: metaRef.current.disclaimer || null,
+        scheduled_at: toIsoString(metaRef.current.scheduledAt) ?? null,
+        status: statusToSave,
+        content_json: safeContentJson,
+        content_html: currentHtml,
+        amazon_products: extractAffiliateProducts(enrichedJson),
+      };
+
+      setSaving(true);
+      try {
+        await saveEditorPost(payload);
+        setLastSavedAt(new Date());
+        dirtyRef.current = false;
+        setPillarConflictPrompt(null);
+        if (options?.refreshAfterSave) {
+          startTransition(() => {
+            router.refresh();
+          });
+        }
+
+        const patch: MetaPatch = {
+          replaceExistingPillar: false,
+          images: activeImages,
+        };
+        if (isPillarRole || isAuxRole) {
+          patch.siloGroup = null;
+          patch.siloOrder = 0;
+          patch.siloGroupOrder = 0;
+          patch.showInSiloMenu = isPillarRole ? true : false;
+        }
+        if (nextStatus) patch.status = nextStatus;
+        updateMeta(patch);
+      } catch (error: any) {
+        const conflict = parsePillarConflictError(error);
+        if (conflict) {
+          if (!options?.suppressConflictModal) {
+            setPillarConflictPrompt({
+              ...conflict,
+              pendingStatus: nextStatus,
+            });
+          }
+          return;
+        }
+
+        console.error("Falha ao salvar post", error);
+        const message = typeof error?.message === "string" ? error.message : "Não foi possível salvar o rascunho.";
+        alert(message);
+        return;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [docHtml, docJson, editor, post.id, post.silo_id, router, siloSlug]
+  );
+
+  const onSave = useCallback(
+    async (nextStatus?: EditorMeta["status"]) => {
+      await savePost(nextStatus, { refreshAfterSave: true, suppressConflictModal: false });
+    },
+    [savePost]
+  );
+
+  useEffect(() => {
+    if (autoTimer.current) {
+      clearTimeout(autoTimer.current);
+    }
+    if (saving) return;
+    if (!dirtyRef.current) return;
+    autoTimer.current = setTimeout(() => {
+      void savePost(undefined, { suppressConflictModal: true }).catch(() => undefined);
+    }, 12000);
+    return () => {
+      if (autoTimer.current) clearTimeout(autoTimer.current);
+    };
+  }, [docHtml, docJson, meta, savePost, saving]);
+
+  const dismissPillarConflictPrompt = useCallback(() => {
+    if (resolvingPillarConflict) return;
+    setPillarConflictPrompt(null);
+    updateMeta({ replaceExistingPillar: false });
+  }, [resolvingPillarConflict, updateMeta]);
+
+  const confirmPillarReplacement = useCallback(async () => {
+    if (!pillarConflictPrompt || resolvingPillarConflict) return;
+    setResolvingPillarConflict(true);
+    try {
+      await savePost(pillarConflictPrompt.pendingStatus, {
+        forceReplacePillar: true,
+        refreshAfterSave: true,
+        suppressConflictModal: true,
+      });
+      setPillarConflictPrompt(null);
+      updateMeta({ replaceExistingPillar: false });
+    } catch {
+      return;
+    } finally {
+      setResolvingPillarConflict(false);
+    }
+  }, [pillarConflictPrompt, resolvingPillarConflict, savePost, updateMeta]);
+
+  const openHeroPicker = useCallback(() => heroInputRef.current?.click(), []);
+  const openMediaPicker = useCallback(() => bodyInputRef.current?.click(), []);
+  const openLinkDialog = useCallback(() => setLinkDialogOpen(true), []);
+
+  const onApplySuggestion = useCallback(() => {
+    if (!editor || !activeSuggestion) return;
+    editor
+      .chain()
+      .focus()
+      .setTextSelection({ from: activeSuggestion.from, to: activeSuggestion.to })
+      .insertContent(activeSuggestion.improvedText)
+      .run();
+    setActiveSuggestion(null);
+  }, [editor, activeSuggestion]);
+
+  const onDiscardSuggestion = useCallback(() => {
+    setActiveSuggestion(null);
+  }, []);
+
+  const contextValue = useMemo(
+    () => ({
+      editor,
+      postId: post.id,
+      meta,
+      setMeta: handleMetaChange,
+      outline,
+      links,
+      docText,
+      docHtml,
+      silos,
+      refreshSilos,
+      createSilo,
+      slugStatus,
+      saving,
+      previewMode,
+      setPreviewMode,
+      lastSavedAt,
+      onSave,
+      activeSuggestion,
+      setActiveSuggestion,
+      onApplySuggestion,
+      onDiscardSuggestion,
+      onHeroUpload: uploadHero,
+      onOpenHeroPicker: openHeroPicker,
+      onOpenMedia: openMediaPicker,
+      onOpenLinkDialog: openLinkDialog,
+      onInsertProduct,
+      onInsertYoutube,
+      onInsertTable,
+      onInsertSection: () => undefined,
+      onInsertCallout,
+      onInsertFaq,
+      onInsertIconBlock,
+      onInsertCarouselBlock,
+      onInsertHowTo: () => undefined,
+      onInsertCtaBest: () => undefined,
+      onInsertCtaValue: () => undefined,
+      onInsertCtaTable: () => undefined,
+      onAlignImage,
+      onUpdateImageResponsive,
+      onUpdateImageVisibility,
+      onResetImageResponsive,
+      onClearImageResponsive,
+      onSetTableRenderMode,
+      onApplyTableMobileSlide,
+      onApplyTableMobileCards,
+      onResetTableRenderMode,
+      onUpdateTableResponsive,
+      onUpdateTableVisibility,
+      onResetTableResponsive,
+      onClearTableResponsive,
+      onMoveBlockUp,
+      onMoveBlockDown,
+      onSelectLink,
+      onInsertImage,
+      onUpdateImageAlt,
+      onRemoveImage,
+      onJumpToHeading,
+    }),
+    [
+      editor,
+      post.id,
+      meta,
+      handleMetaChange,
+      outline,
+      links,
+      docText,
+      docHtml,
+      silos,
+      refreshSilos,
+      createSilo,
+      slugStatus,
+      saving,
+      previewMode,
+      setPreviewMode,
+      lastSavedAt,
+      onSave,
+      activeSuggestion,
+      onApplySuggestion,
+      onDiscardSuggestion,
+      uploadHero,
+      openHeroPicker,
+      openMediaPicker,
+      openLinkDialog,
+      onInsertProduct,
+      onInsertYoutube,
+      onInsertTable,
+      onInsertCallout,
+      onInsertFaq,
+      onInsertIconBlock,
+      onInsertCarouselBlock,
+      onAlignImage,
+      onUpdateImageResponsive,
+      onUpdateImageVisibility,
+      onResetImageResponsive,
+      onClearImageResponsive,
+      onSetTableRenderMode,
+      onApplyTableMobileSlide,
+      onApplyTableMobileCards,
+      onResetTableRenderMode,
+      onUpdateTableResponsive,
+      onUpdateTableVisibility,
+      onResetTableResponsive,
+      onClearTableResponsive,
+      onMoveBlockUp,
+      onMoveBlockDown,
+      onSelectLink,
+      onInsertImage,
+      onUpdateImageAlt,
+      onRemoveImage,
+      onJumpToHeading,
+    ]
+  );
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      className="inline-flex h-9 min-w-9 items-center justify-center rounded-md border border-white/15 bg-[#1d1c24] px-2 text-xs font-bold text-slate-300 hover:border-cyan-300/45 hover:text-white"
-    >
-      {icon}
-      <span className="sr-only">{label}</span>
-    </button>
+    <EditorProvider value={contextValue}>
+      <div className="flex h-full min-h-0 min-w-0 w-full overflow-hidden bg-(--bg) text-(--text)">
+        <ContentIntelligence />
+
+        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+          <EditorCanvas />
+          <AdvancedLinkDialog open={linkDialogOpen} onClose={() => setLinkDialogOpen(false)} />
+          <LinkBubbleMenu editor={editor} onOpenLinkDialog={() => setLinkDialogOpen(true)} />
+          <CareGlowBubbleMenu editor={editor} onOpenLinkDialog={() => setLinkDialogOpen(true)} />
+          <InternalLinkCandidateMenu editor={editor} />
+        </div>
+
+        <EditorInspector />
+
+        <input
+          ref={heroInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (!file) return;
+            void uploadHero(file);
+          }}
+        />
+
+        <input
+          ref={bodyInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (!file) return;
+            void uploadAndInsertImage(file);
+          }}
+        />
+
+        {pillarConflictPrompt ? (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-4">
+            <div className="w-full max-w-lg rounded-xl border border-(--border) bg-(--surface) p-5 shadow-2xl">
+              <h3 className="text-base font-semibold text-(--text)">Substituir pilar do silo?</h3>
+              <p className="mt-2 text-sm text-(--muted)">
+                Já existe um pilar em <strong>{currentSilo?.name ?? "este silo"}</strong>. Ao confirmar, o pilar atual
+                vira <strong>SUPORTE</strong> e este post será salvo como <strong>PILAR</strong>.
+              </p>
+              <div className="mt-3 rounded-md border border-(--border) bg-(--surface-muted) p-3 text-sm">
+                <p className="font-semibold text-(--text)">{pillarConflictPrompt.current_pillar.title}</p>
+                <p className="mt-1 text-xs text-(--muted)">
+                  Grupo: {pillarConflictPrompt.current_pillar.silo_group ?? "sem grupo"} | Ordem:{" "}
+                  {pillarConflictPrompt.current_pillar.silo_order ?? 0}
+                </p>
+              </div>
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={dismissPillarConflictPrompt}
+                  disabled={resolvingPillarConflict}
+                  className="rounded-md border border-(--border) bg-(--surface-muted) px-3 py-2 text-xs font-semibold text-(--text) hover:border-(--brand-hot) disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void confirmPillarReplacement()}
+                  disabled={resolvingPillarConflict}
+                  className="rounded-md bg-(--brand-hot) px-3 py-2 text-xs font-semibold text-(--paper) hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {resolvingPillarConflict ? "Substituindo..." : "Substituir e salvar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </EditorProvider>
   );
 }
