@@ -14,6 +14,7 @@ import type { Role } from "./roles";
 // in Server Components / Route Handlers / Server Actions.
 export {
   ACTIVE_ROLE_COOKIE,
+  ACTIVE_PERSONA_COOKIE,
   roleRoutes,
   roleLabels,
   getAllowedActiveRoles,
@@ -24,6 +25,11 @@ export {
 export async function getActiveRoleCookie() {
   const cookieStore = await cookies();
   return cookieStore.get("fantasyia_active_role")?.value || null;
+}
+
+export async function getActivePersonaCookie() {
+  const cookieStore = await cookies();
+  return cookieStore.get("fantasyia_active_persona_user_id")?.value || null;
 }
 
 export async function setActiveRoleCookie(role: Role) {
@@ -40,4 +46,5 @@ export async function setActiveRoleCookie(role: Role) {
 export async function clearActiveRoleCookie() {
   const cookieStore = await cookies();
   cookieStore.delete("fantasyia_active_role");
+  cookieStore.delete("fantasyia_active_persona_user_id");
 }

@@ -3,13 +3,16 @@ import {
   uuid,
   varchar,
   text,
+  jsonb,
   timestamp,
   boolean,
+  integer,
   pgEnum,
   uniqueIndex,
   index,
   primaryKey,
 } from "drizzle-orm/pg-core";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 // =======================
@@ -18,9 +21,16 @@ import { relations } from "drizzle-orm";
 export const roleEnum = pgEnum("user_role", ["admin", "creator", "subscriber", "affiliate", "writer"]);
 export const postTypeEnum = pgEnum("post_type", ["video", "image", "article"]);
 export const accessTierEnum = pgEnum("access_tier", ["free", "premium"]);
+export const subscriptionPlanKeyEnum = pgEnum("subscription_plan_key", ["premium", "emerald"]);
+export const postContentTierEnum = pgEnum("post_content_tier", ["basic", "premium", "emerald", "ppv"]);
+export const creatorPromotionTypeEnum = pgEnum("creator_promotion_type", ["basic_ppv", "basic_chat"]);
+export const notificationChannelEnum = pgEnum("notification_channel", ["in_app", "email"]);
+export const notificationTypeEnum = pgEnum("notification_type", ["messages", "likes", "comments", "moderation", "financial", "system"]);
+export const moderationActionTypeEnum = pgEnum("moderation_action_type", ["warning", "recommendation", "block"]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["active", "past_due", "canceled", "trialing"]);
 export const transactionStatusEnum = pgEnum("transaction_status", ["pending", "completed", "failed"]);
 export const chatMessageTypeEnum = pgEnum("chat_message_type", ["text", "media", "ppv_locked"]);
+export const moderationStatusEnum = pgEnum("moderation_status", ["visible", "removed"]);
 
 // =======================
 // USERS & PROFILES TABLE
@@ -83,8 +93,12 @@ export const creatorProfiles = pgTable("creator_profiles", {
   publicBio: text("public_bio"),
   publicAvatarUrl: text("public_avatar_url"),
   subscriptionPrice: text("subscription_price"), 
+  defaultPpvPrice: text("default_ppv_price"),
   currency: varchar("currency", { length: 10 }).default("BRL").notNull(),
   isAcceptingTips: boolean("is_accepting_tips").default(true).notNull(),
+  isBlocked: boolean("is_blocked").default(false).notNull(),
+  blockedAt: timestamp("blocked_at"),
+  blockedBy: uuid("blocked_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -119,6 +133,17 @@ export const subscriberProfilesRelations = relations(subscriberProfiles, ({ one 
   }),
 }));
 
+export const adminRolePersonas = pgTable("admin_role_personas", {
+  adminUserId: uuid("admin_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  role: roleEnum("role").notNull(),
+  personaUserId: uuid("persona_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.adminUserId, table.role] }),
+  uniqueIndex("idx_admin_role_personas_persona").on(table.personaUserId),
+]);
+
 // =======================
 // WALLETS
 // =======================
@@ -150,6 +175,7 @@ export const subscriptionPlans = pgTable("subscription_plans", {
   creatorId: uuid("creator_id")
     .references(() => users.id, { onDelete: "cascade" })
     .notNull(),
+  planKey: subscriptionPlanKeyEnum("plan_key").default("premium").notNull(),
   name: varchar("name", { length: 150 }).notNull(),
   description: text("description"),
   price: text("price").notNull(),
@@ -158,7 +184,9 @@ export const subscriptionPlans = pgTable("subscription_plans", {
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_subscription_plans_key").on(table.creatorId, table.planKey),
+]);
 
 export const subscriptionPlansRelations = relations(subscriptionPlans, ({ one, many }) => ({
   creator: one(users, {
@@ -247,6 +275,53 @@ export const ppvUnlocksRelations = relations(ppvUnlocks, ({ one }) => ({
   }),
 }));
 
+export const creatorPromotions = pgTable("creator_promotions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  creatorId: uuid("creator_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  promotionType: creatorPromotionTypeEnum("promotion_type").notNull(),
+  title: varchar("title", { length: 150 }).notNull(),
+  discountPercent: integer("discount_percent").default(5).notNull(),
+  userLimit: integer("user_limit").default(10).notNull(),
+  startsAt: timestamp("starts_at").defaultNow().notNull(),
+  endsAt: timestamp("ends_at").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_creator_promotions_lookup").on(table.creatorId, table.promotionType, table.isActive),
+]);
+
+export const creatorWarnings = pgTable("creator_warnings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  creatorId: uuid("creator_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  postId: uuid("post_id").references(() => posts.id, { onDelete: "set null" }),
+  adminId: uuid("admin_id").references(() => users.id, { onDelete: "set null" }),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_creator_warnings_creator").on(table.creatorId),
+  index("idx_creator_warnings_post").on(table.postId),
+]);
+
+export const moderationActions = pgTable("moderation_actions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  actionType: moderationActionTypeEnum("action_type").notNull(),
+  creatorId: uuid("creator_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  postId: uuid("post_id").references(() => posts.id, { onDelete: "set null" }),
+  adminUserId: uuid("admin_user_id").references(() => users.id, { onDelete: "set null" }),
+  personaUserId: uuid("persona_user_id").references(() => users.id, { onDelete: "set null" }),
+  reason: text("reason").notNull(),
+  recommendation: text("recommendation"),
+  emailStatus: varchar("email_status", { length: 40 }).default("not_sent").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_moderation_actions_creator").on(table.creatorId, table.createdAt),
+  index("idx_moderation_actions_post").on(table.postId),
+]);
+
 // =======================
 // POSTS (Feed Content)
 // =======================
@@ -258,6 +333,7 @@ export const posts = pgTable("posts", {
   content: text("content"),
   postType: postTypeEnum("post_type").notNull(),
   accessTier: accessTierEnum("access_tier").default("free").notNull(),
+  contentTier: postContentTierEnum("content_tier").default("basic").notNull(),
   price: text("price"), // Used for PPV
   mediaUrl: text("media_url"), 
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -303,20 +379,106 @@ export const comments = pgTable("comments", {
   postId: uuid("post_id")
     .references(() => posts.id, { onDelete: "cascade" })
     .notNull(),
+  parentId: uuid("parent_id").references((): AnyPgColumn => comments.id, { onDelete: "cascade" }),
   userId: uuid("user_id")
     .references(() => users.id, { onDelete: "cascade" })
     .notNull(),
   content: text("content").notNull(),
+  moderationStatus: moderationStatusEnum("moderation_status").default("visible").notNull(),
+  editedAt: timestamp("edited_at"),
+  deletedAt: timestamp("deleted_at"),
+  deletedBy: uuid("deleted_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("idx_comments_post_id").on(table.postId),
+  index("idx_comments_parent_id").on(table.parentId),
   index("idx_comments_created_at").on(table.createdAt),
 ]);
 
-export const commentsRelations = relations(comments, ({ one }) => ({
+export const commentsRelations = relations(comments, ({ one, many }) => ({
   post: one(posts, { fields: [comments.postId], references: [posts.id] }),
   user: one(users, { fields: [comments.userId], references: [users.id] }),
+  parent: one(comments, { fields: [comments.parentId], references: [comments.id], relationName: "comment_replies" }),
+  replies: many(comments, { relationName: "comment_replies" }),
+  likes: many(commentLikes),
+  views: many(commentViews),
 }));
+
+export const commentLikes = pgTable("comment_likes", {
+  commentId: uuid("comment_id")
+    .references(() => comments.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: uuid("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.commentId, table.userId] }),
+  index("idx_comment_likes_user_id").on(table.userId),
+]);
+
+export const commentLikesRelations = relations(commentLikes, ({ one }) => ({
+  comment: one(comments, { fields: [commentLikes.commentId], references: [comments.id] }),
+  user: one(users, { fields: [commentLikes.userId], references: [users.id] }),
+}));
+
+export const commentViews = pgTable("comment_views", {
+  commentId: uuid("comment_id")
+    .references(() => comments.id, { onDelete: "cascade" })
+    .notNull(),
+  viewerId: uuid("viewer_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  viewedAt: timestamp("viewed_at").defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.commentId, table.viewerId] }),
+  index("idx_comment_views_viewer_id").on(table.viewerId),
+]);
+
+export const commentViewsRelations = relations(commentViews, ({ one }) => ({
+  comment: one(comments, { fields: [commentViews.commentId], references: [comments.id] }),
+  viewer: one(users, { fields: [commentViews.viewerId], references: [users.id] }),
+}));
+
+export const creatorCommentBans = pgTable("creator_comment_bans", {
+  creatorId: uuid("creator_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  bannedBy: uuid("banned_by").references(() => users.id, { onDelete: "set null" }),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.creatorId, table.userId] }),
+  index("idx_creator_comment_bans_user").on(table.userId),
+]);
+
+export const creatorCommentBansRelations = relations(creatorCommentBans, ({ one }) => ({
+  creator: one(users, { fields: [creatorCommentBans.creatorId], references: [users.id], relationName: "creator_comment_ban_creator" }),
+  user: one(users, { fields: [creatorCommentBans.userId], references: [users.id], relationName: "creator_comment_ban_user" }),
+  moderator: one(users, { fields: [creatorCommentBans.bannedBy], references: [users.id], relationName: "creator_comment_ban_moderator" }),
+}));
+
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  type: varchar("type", { length: 80 }).notNull(),
+  title: varchar("title", { length: 180 }).notNull(),
+  body: text("body"),
+  data: jsonb("data"),
+  isRead: boolean("is_read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_notifications_user_read").on(table.userId, table.isRead, table.createdAt),
+]);
+
+export const notificationPreferences = pgTable("notification_preferences", {
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  channel: notificationChannelEnum("channel").notNull(),
+  type: notificationTypeEnum("type").notNull(),
+  enabled: boolean("enabled").default(true).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.channel, table.type] }),
+]);
 
 // =======================
 // CHATS & DMs (Canônico)
@@ -355,6 +517,7 @@ export const chatMessages = pgTable("chat_messages", {
   price: text("price"),
   currency: varchar("currency", { length: 10 }).default("BRL").notNull(),
   isRead: boolean("is_read").default(false).notNull(),
+  editedAt: timestamp("edited_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("idx_chat_messages_chat").on(table.chatId),

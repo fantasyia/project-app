@@ -8,6 +8,7 @@ import type { Role } from "./roles";
 import { normalizeRole } from "./roles";
 
 export const ACTIVE_ROLE_COOKIE = "fantasyia_active_role";
+export const ACTIVE_PERSONA_COOKIE = "fantasyia_active_persona_user_id";
 
 export const roleRoutes: Record<Role, string> = {
   subscriber: "/dashboard/user/feed",

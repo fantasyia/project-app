@@ -17,7 +17,7 @@ export default async function AdminOverview() {
   const quickActions = [
     { href: "/dashboard/admin/settings", label: "Gerar convite", description: "Criar link para Creator, Afiliado, Blog ou User." },
     { href: "/dashboard/admin/kyc", label: "Revisar KYC", description: "Aprovar ou reprovar creators pendentes." },
-    { href: "/dashboard/admin/moderation", label: "Auditar mídia", description: "Checar posts livres, premium e PPV." },
+    { href: "/dashboard/admin/moderation", label: "Auditar mídia", description: "Checar Plano Básico, Premium, Esmeralda e PPV." },
     { href: "/dashboard/admin/refunds", label: "Fila financeira", description: "Reembolsos e eventos sensíveis." },
   ];
 

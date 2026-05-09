@@ -97,7 +97,7 @@
 
 @media (min-width: 768px) {
   .app-shell {
-    max-width: 448px;
+    max-width: 768px;
   }
 }
 
@@ -646,4 +646,8 @@
 
 .admin-app :where(.border-zinc-200, .border-gray-200, .border-zinc-300, .border-gray-300):not(.editor-public-preview, .editor-public-preview *) {
   border-color: var(--border) !important;
+}
+
+.fantasyia-no-native-fullscreen::-webkit-media-controls-fullscreen-button {
+  display: none;
 }

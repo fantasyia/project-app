@@ -8,7 +8,7 @@ export const metadata = { title: "Chat | Fantasyia" };
 export default async function MessagesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ with?: string }>;
+  searchParams: Promise<{ with?: string; intent?: string }>;
 }) {
   const user = await getCurrentUser("subscriber");
   if (!user) {
@@ -29,6 +29,7 @@ export default async function MessagesPage({
   let initialConversationId: string | null = null;
   const resolvedSearchParams = await searchParams;
   const targetUserId = resolvedSearchParams?.with?.trim();
+  const initialIntent = resolvedSearchParams?.intent === "paid_chat" ? "paid_chat" : null;
 
   if (targetUserId && targetUserId !== user.id) {
     const ensuredConversation = await ensureConversationWithUser(targetUserId);
@@ -47,6 +48,7 @@ export default async function MessagesPage({
       currentUserRole={user.role}
       initialConversations={conversations}
       initialConversationId={initialConversationId}
+      initialIntent={initialIntent}
     />
   );
 }

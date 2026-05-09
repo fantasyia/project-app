@@ -13,7 +13,7 @@ export const fantasyiaBlogBrand = {
   tone:
     "premium, direto, visual, estrategico, sem promessas absolutas e com foco em decisao pratica.",
   publicLinks: [
-    { label: "Planos", href: "/pricing" },
+    { label: "Creators", href: "/dashboard/user/search" },
     { label: "Termos", href: "/terms" },
     { label: "Privacidade", href: "/privacy" },
   ],

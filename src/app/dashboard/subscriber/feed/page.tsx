@@ -4,8 +4,10 @@ import { Crown, Lock, Search } from "lucide-react";
 import { getFeed } from "@/lib/actions/subscriber";
 import { getActiveStories } from "@/lib/actions/engagement";
 import { StoriesBar } from "@/components/shared/StoriesBar";
+import { FullscreenMediaViewer } from "@/components/ui/FullscreenMediaViewer";
 import { parsePostMediaAsset } from "@/lib/media/post-media";
 import { FeedInteractions } from "./feed-interactions";
+import { FeedVideoPlayer } from "./FeedVideoPlayer";
 
 export const metadata = { title: "Feed | Fantasyia" };
 
@@ -102,20 +104,22 @@ export default async function FeedPage() {
                   <div className="relative flex aspect-[4/5] items-center justify-center bg-brand-surface-lowest">
                     {hasMediaPreview ? (
                       isVideoPost && previewMediaAsset.mediaUrl ? (
-                        <video
-                          src={previewMediaAsset.mediaUrl}
-                          poster={previewMediaAsset.posterUrl || undefined}
-                          muted
-                          playsInline
-                          preload="metadata"
-                          className="absolute inset-0 h-full w-full scale-105 object-cover blur-md"
-                        />
+                        <div className="absolute inset-0">
+                          <FeedVideoPlayer
+                            src={previewMediaAsset.mediaUrl}
+                            poster={previewMediaAsset.posterUrl || undefined}
+                            className="h-full w-full object-cover"
+                            blurred
+                            showControls={false}
+                          />
+                        </div>
                       ) : (
                         <Image
                           src={previewMediaAsset.posterUrl || previewMediaAsset.mediaUrl || ""}
                           alt="Preview bloqueado"
                           fill
                           unoptimized
+                          draggable={false}
                           className="scale-105 object-cover blur-md"
                         />
                       )
@@ -130,46 +134,50 @@ export default async function FeedPage() {
                         )}
                       </div>
                       <h3 className="text-base font-semibold text-white">
-                        {post.isPpv ? "Conteúdo PPV" : "Conteúdo exclusivo"}
+                        Conteúdo exclusivo
                       </h3>
                       <p className="mt-1.5 text-sm text-brand-text-muted">
                         {post.isPpv
-                          ? `Desbloqueie por R$ ${post.price}`
+                          ? `Assine ${creatorName} para acessar este PPV`
                           : `Assine ${creatorName} para acessar`}
                       </p>
                       <Link
-                        href={
-                          post.isPpv
-                            ? `/checkout/ppv/${post.id}`
-                            : author?.handle
-                              ? `/${author.handle}`
-                              : "/dashboard/user/search"
-                        }
+                        href={author?.handle ? `/${author.handle}` : "/dashboard/user/search"}
                         className="mt-4 rounded-lg bg-brand-500 px-6 py-2.5 text-sm font-semibold text-black transition hover:bg-brand-400"
                       >
-                        {post.isPpv ? "Desbloquear" : "Ver planos"}
+                        Ver planos
                       </Link>
                     </div>
                   </div>
                 ) : unlockedMediaAsset.mediaUrl ? (
                   <div className="relative aspect-[4/5] bg-brand-surface-lowest">
                     {isVideoPost ? (
-                      <video
+                      <FullscreenMediaViewer
                         src={unlockedMediaAsset.mediaUrl}
+                        alt={`Video de ${creatorName}`}
+                        mediaType="video"
                         poster={unlockedMediaAsset.posterUrl || undefined}
-                        controls
-                        playsInline
-                        preload="metadata"
-                        className="h-full w-full object-cover"
-                      />
+                      >
+                        <FeedVideoPlayer
+                          src={unlockedMediaAsset.mediaUrl}
+                          poster={unlockedMediaAsset.posterUrl || undefined}
+                          className="h-full w-full object-cover"
+                        />
+                      </FullscreenMediaViewer>
                     ) : (
-                      <Image
+                      <FullscreenMediaViewer
                         src={unlockedMediaAsset.mediaUrl}
                         alt={`Post de ${creatorName}`}
-                        fill
-                        unoptimized
-                        className="object-cover"
-                      />
+                      >
+                        <Image
+                          src={unlockedMediaAsset.mediaUrl}
+                          alt={`Post de ${creatorName}`}
+                          fill
+                          unoptimized
+                          draggable={false}
+                          className="object-cover"
+                        />
+                      </FullscreenMediaViewer>
                     )}
                   </div>
                 ) : null}
@@ -179,8 +187,11 @@ export default async function FeedPage() {
                   postId={post.id}
                   likesCount={likesCount}
                   commentsCount={commentsCount}
+                  creatorId={author?.id}
                   creatorHandle={author?.handle}
                   creatorName={creatorName}
+                  initiallyLiked={Boolean(item.likedByMe)}
+                  initiallyFavorited={Boolean(item.favoritedByMe)}
                 />
 
                 {/* Caption */}

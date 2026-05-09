@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   ArrowLeft,
+  Check,
   Coins,
   Crown,
+  Edit3,
   Filter,
   Image as ImageIcon,
   Lock,
@@ -19,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  editChatMessage,
   getMessagesWithUser,
   markChatAsRead,
   sendChatTip,
@@ -56,6 +59,7 @@ type ThreadActivity = {
 
 type ConversationFilter = "all" | "favorites" | "unread" | "premium" | "media";
 type ComposerMode = "text" | "tip" | "premium";
+type ChatIntent = "paid_chat" | null;
 
 const conversationFilters: Array<{
   id: ConversationFilter;
@@ -158,6 +162,7 @@ export function ChatLayout({
   currentUserRole,
   initialConversations,
   initialConversationId = null,
+  initialIntent = null,
   audience = "user",
   frame = "full",
 }: {
@@ -165,6 +170,7 @@ export function ChatLayout({
   currentUserRole: string;
   initialConversations: Conversation[];
   initialConversationId?: string | null;
+  initialIntent?: ChatIntent;
   audience?: "user" | "creator";
   frame?: "full" | "embedded";
 }) {
@@ -559,6 +565,7 @@ export function ChatLayout({
             onBack={() => setActiveChat(null)}
             onToggleFavorite={() => toggleFavorite(activeChat.id)}
             onThreadActivity={(activity) => handleThreadActivity(activeChat.id, activity)}
+            initialIntent={initialIntent}
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
@@ -586,6 +593,7 @@ function ChatThread({
   onBack,
   onToggleFavorite,
   onThreadActivity,
+  initialIntent,
 }: {
   chatId: string;
   currentUserId: string;
@@ -598,6 +606,7 @@ function ChatThread({
   onBack: () => void;
   onToggleFavorite: () => void;
   onThreadActivity: (activity: ThreadActivity) => void;
+  initialIntent: ChatIntent;
 }) {
   const { messages, bottomRef, appendMessage, replaceMessage, markMessageFailed, updateMessage } =
     useRealtimeMessages(chatId, currentUserId, initialMessages);
@@ -610,6 +619,9 @@ function ChatThread({
   const [premiumFile, setPremiumFile] = useState<File | null>(null);
   const [premiumPreviewUrl, setPremiumPreviewUrl] = useState<string | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
+  const [commercialHintVisible, setCommercialHintVisible] = useState(initialIntent === "paid_chat");
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
   const [unlockingMessageId, setUnlockingMessageId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -690,6 +702,7 @@ function ChatThread({
       media_url: null,
       price: null,
       is_read: true,
+      edited_at: null,
       created_at: new Date().toISOString(),
       deliveryState: "sending",
       access_state: "owner",
@@ -710,6 +723,41 @@ function ChatThread({
     });
 
     inputRef.current?.focus();
+  }
+
+  function startEditingMessage(message: LiveChatMessage) {
+    setComposerError(null);
+    setEditingMessageId(message.id);
+    setEditingText(message.content || "");
+  }
+
+  function cancelEditingMessage() {
+    setEditingMessageId(null);
+    setEditingText("");
+  }
+
+  function handleEditMessage() {
+    const messageId = editingMessageId;
+    const normalizedText = editingText.trim();
+    if (!messageId || !normalizedText) return;
+
+    setComposerError(null);
+
+    startTransition(async () => {
+      const result = await editChatMessage(messageId, normalizedText);
+
+      if (result?.success && result.message) {
+        updateMessage(messageId, (currentMessage) => ({
+          ...currentMessage,
+          ...result.message,
+          deliveryState: undefined,
+        }));
+        cancelEditingMessage();
+        return;
+      }
+
+      setComposerError(result?.error || "Nao foi possivel editar a mensagem.");
+    });
   }
 
   function handleSendTip() {
@@ -737,6 +785,7 @@ function ChatThread({
       media_url: null,
       price: null,
       is_read: true,
+      edited_at: null,
       created_at: new Date().toISOString(),
       deliveryState: "sending",
       access_state: "owner",
@@ -797,6 +846,7 @@ function ChatThread({
       media_kind: premiumFile.type.startsWith("video/") ? "video" : "image",
       price: amount.toFixed(2),
       is_read: true,
+      edited_at: null,
       created_at: new Date().toISOString(),
       deliveryState: "sending",
       access_state: "owner",
@@ -889,6 +939,26 @@ function ChatThread({
       </header>
 
       <div className={`border-b border-white/5 ${threadBlockPaddingClass}`}>
+        {commercialHintVisible && (
+          <div className="mb-3 rounded-[22px] border border-brand-500/20 bg-brand-500/10 px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.24em] text-brand-300">Chat comercial</p>
+                <p className="mt-1 text-xs leading-5 text-brand-text-base">
+                  Conversa aberta a partir dos comentarios. Use mensagem normal ou gorjeta quando fizer sentido.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCommercialHintVisible(false)}
+                className="rounded-full p-1 text-brand-text-muted transition hover:text-white"
+                aria-label="Fechar aviso"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
         <div className="flex gap-2 overflow-x-auto pb-1">
           <button
             type="button"
@@ -966,6 +1036,12 @@ function ChatThread({
             const isTipMessage = isTipReceiptMessage(msg);
             const isLockedPremium = msg.message_type === "ppv_locked" && msg.access_state === "locked";
             const isUnlockedPremium = msg.message_type === "ppv_locked" && msg.access_state !== "locked";
+            const canEditMessage =
+              isMine &&
+              msg.message_type === "text" &&
+              !msg.is_read &&
+              msg.deliveryState !== "sending" &&
+              !isTipMessage;
 
             return (
               <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
@@ -1040,18 +1116,45 @@ function ChatThread({
                   )}
 
                   <div className="mt-1 flex items-center justify-between gap-3">
-                    <span
-                      className={`block text-[9px] tracking-wider ${
-                        isTipMessage || isLockedPremium || isUnlockedPremium
-                          ? "text-brand-text-muted"
-                          : isMine
-                            ? "text-black/50"
-                            : "text-brand-text-muted"
-                      }`}
-                    >
-                      {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`block text-[9px] tracking-wider ${
+                          isTipMessage || isLockedPremium || isUnlockedPremium
+                            ? "text-brand-text-muted"
+                            : isMine
+                              ? "text-black/50"
+                              : "text-brand-text-muted"
+                        }`}
+                      >
+                        {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      {msg.edited_at && (
+                        <span
+                          className={`text-[9px] uppercase tracking-[0.18em] ${
+                            isMine && !isTipMessage && !isLockedPremium && !isUnlockedPremium
+                              ? "text-black/45"
+                              : "text-brand-text-muted"
+                          }`}
+                        >
+                          Editada
+                        </span>
+                      )}
+                    </div>
 
+                    {canEditMessage && (
+                      <button
+                        type="button"
+                        onClick={() => startEditingMessage(msg)}
+                        className={`inline-flex items-center gap-1 text-[9px] uppercase tracking-[0.2em] transition ${
+                          isMine && !isTipMessage && !isLockedPremium && !isUnlockedPremium
+                            ? "text-black/55 hover:text-black"
+                            : "text-brand-300 hover:text-brand-200"
+                        }`}
+                      >
+                        <Edit3 size={10} />
+                        Editar
+                      </button>
+                    )}
                     {msg.deliveryState === "sending" && (
                       <span
                         className={`text-[9px] uppercase tracking-[0.22em] ${
@@ -1076,7 +1179,37 @@ function ChatThread({
       </div>
 
       <div className="flex-shrink-0 border-t border-white/5 bg-brand-surface-lowest p-4">
-        {composerMode === "tip" ? (
+        {editingMessageId ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-brand-300">Editar antes de visualizar</p>
+              <button
+                type="button"
+                onClick={cancelEditingMessage}
+                className="rounded-full p-1 text-brand-text-muted transition hover:text-white"
+                aria-label="Cancelar edicao"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                value={editingText}
+                onChange={(event) => setEditingText(event.target.value)}
+                onKeyDown={(event) => event.key === "Enter" && handleEditMessage()}
+                className="flex-1 border-0 border-b border-white/10 bg-transparent px-2 py-3 text-sm font-light text-white outline-none transition-colors placeholder:text-white/20 focus:border-brand-500"
+              />
+              <button
+                type="button"
+                disabled={pending || !editingText.trim()}
+                onClick={handleEditMessage}
+                className="rounded-xl bg-brand-500 p-3 text-black transition-colors hover:bg-brand-400 disabled:bg-brand-500/30"
+              >
+                <Check size={18} />
+              </button>
+            </div>
+          </div>
+        ) : composerMode === "tip" ? (
           <div className="space-y-4">
             <div className="flex gap-2 overflow-x-auto pb-1">
               {tipPresets.map((amount) => {

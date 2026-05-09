@@ -14,7 +14,7 @@ export default async function AdminModerationPage() {
           Moderacao <span className="text-brand-500">de midia</span>
         </h1>
         <p className="mt-3 text-sm leading-6 text-brand-text-muted">
-          Ponto de checagem global para posts livres, premium e PPV.
+          Ponto de checagem global para posts Plano Básico, Premium, Esmeralda e PPV.
         </p>
       </div>
 

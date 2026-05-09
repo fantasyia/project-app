@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ComponentType } from "react";
 import {
   Bell,
+  MessageSquareText,
   ImagePlus,
   LayoutDashboard,
   Menu,
@@ -26,6 +27,7 @@ type CreatorNavItem = {
 const navItems: CreatorNavItem[] = [
   { href: "/dashboard/creator/studio", label: "Painel", icon: LayoutDashboard },
   { href: "/dashboard/creator/posts", label: "Conteudos", icon: ImagePlus },
+  { href: "/dashboard/creator/comments", label: "Comentarios", icon: MessageSquareText },
   { href: "/dashboard/creator/followers", label: "Seguidores", icon: Users },
   { href: "/dashboard/creator/plans", label: "Planos", icon: Tag },
   { href: "/dashboard/creator/messages", label: "Mensagens", icon: MessageCircle },
@@ -37,16 +39,40 @@ const navItems: CreatorNavItem[] = [
 export function CreatorNav() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const navRef = useRef<HTMLElement | null>(null);
   const activeItem =
     navItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ||
     navItems[0];
   const ActiveIcon = activeItem.icon;
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!navRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
   return (
-    <nav className="relative">
+    <nav ref={navRef} className="relative">
       <button
         type="button"
         onClick={() => setIsOpen((current) => !current)}
+        aria-expanded={isOpen}
         className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-left text-white"
       >
         <span className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em]">

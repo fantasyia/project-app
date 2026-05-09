@@ -3,6 +3,7 @@ import { extractArticleHeadings } from "@/lib/miniwordpress/article-analysis";
 
 type ArticleRichContentProps = {
   content?: string | null;
+  blogBasePath?: string;
 };
 
 function addHeadingAnchors(content: string) {
@@ -16,6 +17,15 @@ function addHeadingAnchors(content: string) {
     if (!heading || /\sid=/.test(attrs)) return match;
     return `<h${level}${attrs} id="${heading.id}">${inner}</h${level}>`;
   });
+}
+
+function rewriteBlogLinks(content: string, blogBasePath: string) {
+  if (blogBasePath === "/blog") return content;
+
+  return content.replace(
+    /\shref=(["'])\/blog(\/[^"']*)?\1/gi,
+    (_match, quote: string, path = "") => ` href=${quote}${blogBasePath}${path}${quote}`
+  );
 }
 
 function pushParagraph(blocks: React.ReactNode[], lines: string[], key: string) {
@@ -128,16 +138,18 @@ function LegacyMarkdownContent({ content }: { content: string }) {
   return <div className="space-y-6">{blocks}</div>;
 }
 
-export function ArticleRichContent({ content }: ArticleRichContentProps) {
+export function ArticleRichContent({ content, blogBasePath = "/blog" }: ArticleRichContentProps) {
   if (!content?.trim()) {
     return <p className="text-lg font-light leading-8 text-brand-text-base">Conteudo indisponivel.</p>;
   }
 
   if (isHtmlContent(content)) {
+    const html = rewriteBlogLinks(addHeadingAnchors(content), blogBasePath);
+
     return (
       <div
         className="editor-public-preview space-y-6 scroll-smooth [&_a]:text-brand-400 [&_a]:underline [&_a]:underline-offset-4 [&_blockquote]:rounded-[28px] [&_blockquote]:border-l-4 [&_blockquote]:border-brand-500/60 [&_blockquote]:bg-brand-500/8 [&_blockquote]:px-6 [&_blockquote]:py-5 [&_blockquote_p]:m-0 [&_h2]:scroll-mt-24 [&_h2]:mt-8 [&_h2]:text-3xl [&_h2]:font-thin [&_h2]:tracking-[-0.03em] [&_h3]:scroll-mt-24 [&_h3]:mt-6 [&_h3]:text-2xl [&_h3]:font-light [&_h3]:tracking-[-0.02em] [&_h4]:scroll-mt-24 [&_h4]:mt-5 [&_h4]:text-xl [&_h4]:font-light [&_li]:ml-5 [&_li]:list-disc [&_p]:my-3 [&_p]:text-lg [&_p]:font-light [&_p]:leading-8 [&_p]:text-brand-text-base [&_ul]:space-y-3"
-        dangerouslySetInnerHTML={{ __html: addHeadingAnchors(content) }}
+        dangerouslySetInnerHTML={{ __html: html }}
       />
     );
   }

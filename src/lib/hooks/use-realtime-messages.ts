@@ -12,6 +12,7 @@ export type ChatMessage = {
   media_url: string | null;
   price: string | null;
   is_read: boolean;
+  edited_at: string | null;
   created_at: string;
   media_kind?: "image" | "video";
   access_state?: "owner" | "unlocked" | "locked";
@@ -75,6 +76,32 @@ export function useRealtimeMessages(chatId: string, currentUserId: string, initi
             if (prev.some((m) => m.id === decoratedMessage.id)) return prev;
             return sortMessages([...prev, decoratedMessage]);
           });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "chat_messages",
+          filter: `chat_id=eq.${chatId}`,
+        },
+        (payload) => {
+          const updatedMessage = payload.new as ChatMessage;
+          setMessages((prev) =>
+            sortMessages(
+              prev.map((message) =>
+                message.id === updatedMessage.id
+                  ? {
+                      ...message,
+                      content: updatedMessage.content,
+                      edited_at: updatedMessage.edited_at,
+                      is_read: updatedMessage.is_read,
+                    }
+                  : message
+              )
+            )
+          );
         }
       )
       .subscribe();

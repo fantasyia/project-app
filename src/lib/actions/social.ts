@@ -10,6 +10,7 @@ import {
   type IdentityView,
 } from "@/lib/identity/context-profiles";
 import { sanitizePersistedAvatarUrl } from "@/lib/media/post-media";
+import { canUseDirectWithCreator } from "@/lib/auth/entitlement";
 import { createClient } from "@/lib/supabase/server";
 
 type FollowerProfile = {
@@ -35,6 +36,7 @@ type ConversationMessage = {
   is_read: boolean;
   sender_id: string;
   message_type: string;
+  edited_at?: string | null;
 };
 
 export type ConversationSummary = {
@@ -53,6 +55,7 @@ export type ChatMessageRow = {
   media_url: string | null;
   price: string | null;
   is_read: boolean;
+  edited_at: string | null;
   created_at: string;
   media_kind?: "image" | "video";
   access_state?: "owner" | "unlocked" | "locked";
@@ -238,6 +241,47 @@ async function ensureAuthUserProfileOrError(supabase: Awaited<ReturnType<typeof 
   return { success: true };
 }
 
+async function assertDirectAccess(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  senderId: string,
+  receiverId: string
+) {
+  const { data: users } = await supabase
+    .from("users")
+    .select("id, role")
+    .in("id", [senderId, receiverId]);
+
+  const sender = (users || []).find((item) => item.id === senderId);
+  const receiver = (users || []).find((item) => item.id === receiverId);
+
+  if (!sender || !receiver) return { error: "Usuario invalido." };
+  if (sender.role === "admin" || receiver.role === "admin") return { success: true };
+
+  if (sender.role === "subscriber" && receiver.role === "creator") {
+    const access = await canUseDirectWithCreator({
+      viewerId: sender.id,
+      viewerRole: sender.role,
+      creatorId: receiver.id,
+    });
+    if (!access.hasAccess) {
+      return { error: "Direct liberado apenas para Premium, Esmeralda ou promocao ativa deste creator." };
+    }
+  }
+
+  if (sender.role === "creator" && receiver.role === "subscriber") {
+    const access = await canUseDirectWithCreator({
+      viewerId: receiver.id,
+      viewerRole: receiver.role,
+      creatorId: sender.id,
+    });
+    if (!access.hasAccess) {
+      return { error: "Este user esta no Plano Básico e nao tem Direct liberado com este creator." };
+    }
+  }
+
+  return { success: true };
+}
+
 // ===========================
 // CHAT (Realtime-ready)
 // ===========================
@@ -251,6 +295,9 @@ export async function sendMessage(receiverId: string, content: string, price?: n
 
   const profileSync = await ensureAuthUserProfileOrError(supabase, user);
   if ("error" in profileSync) return { error: profileSync.error };
+
+  const directAccess = await assertDirectAccess(supabase, user.id, receiverId);
+  if ("error" in directAccess) return { error: directAccess.error };
 
   const chatResult = await getOrCreateChatId(user.id, receiverId);
   if ("error" in chatResult) return { error: chatResult.error };
@@ -296,6 +343,9 @@ export async function sendLockedMediaMessage(formData: FormData) {
   if (!receiverId) return { error: "Conversa invalida." };
   if (!file || file.size === 0) return { error: "Envie uma imagem ou video para travar no chat." };
   if (!Number.isFinite(price) || price <= 0) return { error: "Informe um preco valido para a midia premium." };
+
+  const directAccess = await assertDirectAccess(supabase, user.id, receiverId);
+  if ("error" in directAccess) return { error: directAccess.error };
 
   const chatResult = await getOrCreateChatId(user.id, receiverId);
   if ("error" in chatResult) return { error: chatResult.error };
@@ -368,7 +418,7 @@ export async function getConversations() {
       last_message_at,
       participant1:users!chats_participant1_id_fkey(id, display_name, avatar_url, handle, role),
       participant2:users!chats_participant2_id_fkey(id, display_name, avatar_url, handle, role),
-      chat_messages(id, content, created_at, is_read, sender_id, message_type)
+      chat_messages(id, content, created_at, is_read, sender_id, message_type, edited_at)
     `)
     .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`)
     .order("last_message_at", { ascending: false });
@@ -412,6 +462,9 @@ export async function getConversations() {
       : null;
     if (!otherUser) continue;
 
+    const directAccess = await assertDirectAccess(supabase, user.id, otherUser.id);
+    if ("error" in directAccess) continue;
+
     const sortedMessages = [...(safeChat.chat_messages || [])].sort(
       (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
     );
@@ -445,12 +498,15 @@ export async function ensureConversationWithUser(otherUserId: string) {
     .eq("id", otherUserId)
     .maybeSingle();
 
+  const directAccess = await assertDirectAccess(supabase, user.id, otherUserId);
+  if ("error" in directAccess) return { error: directAccess.error };
+
   const chatResult = await getOrCreateChatId(user.id, otherUserId);
   if ("error" in chatResult) return { error: chatResult.error };
 
   const { data: lastMessage } = await supabase
     .from("chat_messages")
-    .select("id, content, created_at, is_read, sender_id, message_type")
+    .select("id, content, created_at, is_read, sender_id, message_type, edited_at")
     .eq("chat_id", chatResult.chatId)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -492,6 +548,9 @@ export async function getMessagesWithUser(otherUserId: string) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return [];
+
+  const directAccess = await assertDirectAccess(supabase, user.id, otherUserId);
+  if ("error" in directAccess) return [];
 
   const { data: chats } = await supabase
     .from("chats")
@@ -541,6 +600,50 @@ export async function getMessagesWithUser(otherUserId: string) {
   return safeMessages.map((message) => buildChatMessageView(message, user.id, unlockedMessageIds));
 }
 
+export async function editChatMessage(messageId: string, content: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const normalizedContent = content.trim();
+
+  if (!user) return { error: "Nao autenticado" };
+  if (!messageId) return { error: "Mensagem invalida." };
+  if (!normalizedContent) return { error: "Mensagem vazia." };
+
+  const { data: message } = await supabase
+    .from("chat_messages")
+    .select("id, chat_id, sender_id, message_type, content, media_url, price, is_read, created_at, edited_at")
+    .eq("id", messageId)
+    .maybeSingle();
+
+  if (!message) return { error: "Mensagem nao encontrada." };
+  if (message.sender_id !== user.id) return { error: "Voce so pode editar suas mensagens." };
+  if (message.is_read) return { error: "Essa mensagem ja foi visualizada e nao pode mais ser editada." };
+  if (message.message_type !== "text") {
+    return { error: "Somente mensagens de texto podem ser editadas nesta versao." };
+  }
+
+  const { data: updatedMessage, error } = await supabase
+    .from("chat_messages")
+    .update({ content: normalizedContent, edited_at: new Date().toISOString() })
+    .eq("id", messageId)
+    .eq("sender_id", user.id)
+    .eq("is_read", false)
+    .select("*")
+    .single();
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard/user/messages");
+  revalidatePath("/dashboard/creator/messages");
+
+  return {
+    success: true,
+    message: buildChatMessageView(updatedMessage as RawChatMessageRow, user.id, new Set()),
+  };
+}
+
 export async function getChatIdWithUser(otherUserId: string) {
   const supabase = await createClient();
   const {
@@ -587,7 +690,7 @@ export async function unlockChatMessage(messageId: string) {
 
   const { data: message } = await supabase
     .from("chat_messages")
-    .select("id, chat_id, sender_id, message_type, content, media_url, price, is_read, created_at")
+    .select("id, chat_id, sender_id, message_type, content, media_url, price, is_read, created_at, edited_at")
     .eq("id", messageId)
     .maybeSingle();
 

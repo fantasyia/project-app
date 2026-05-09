@@ -104,7 +104,7 @@ function MiniWordPressHeader() {
           />
         ) : null}
 
-        <nav className={`flex shrink-0 items-center gap-1 md:gap-1.5 ${isEditorRoute ? "justify-self-end" : ""}`}>
+        <nav className={`flex shrink-0 items-center gap-1 pr-12 md:gap-1.5 ${isEditorRoute ? "justify-self-end" : ""}`}>
           {navItems.map((item) => {
             const Icon = item.icon;
             return (

@@ -4,6 +4,7 @@ export type Role = "admin" | "creator" | "affiliate" | "editor" | "subscriber";
 const roleAliases: Record<string, Role> = {
   "writer": "editor",
   "blog": "editor",
+  "editor": "editor",
   "subscriber": "subscriber",
   "creator": "creator",
   "affiliate": "affiliate",

@@ -1,9 +1,9 @@
-import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
+import { PrivilegedRoleMenu } from "@/components/auth/PrivilegedRoleMenu";
 
 export function MiniWordPressRoleMenu() {
   return (
-    <div className="fixed right-4 top-3 z-[90]">
-      <RoleSwitcher />
+    <div className="fixed right-3 top-3 z-[90] flex items-center">
+      <PrivilegedRoleMenu />
     </div>
   );
 }

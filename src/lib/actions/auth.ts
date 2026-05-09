@@ -5,10 +5,13 @@ import { createRoleInviteToken, verifyRoleInviteToken } from "@/lib/auth/role-in
 import {
   canAssumeRole,
   clearActiveRoleCookie,
+  getActivePersonaCookie,
+  getActiveRoleCookie,
   getAllowedActiveRoles,
   roleRoutes,
   setActiveRoleCookie,
 } from "@/lib/auth/role-session";
+import { ensureAdminPersona, getPersonaById } from "@/lib/auth/admin-persona";
 import { ensurePublicUserProfile } from "@/lib/auth/ensure-user-profile";
 import { resolveBaseRole } from "@/lib/auth/effective-role";
 import { requireRole } from "@/lib/auth/rbac";
@@ -119,7 +122,15 @@ export async function signUp(formData: FormData) {
   });
 
   if (error) {
-    return { error: error.message };
+    let errorMessage = error.message;
+    if (errorMessage.includes("rate limit exceeded") || errorMessage.includes("over_email_send_rate_limit")) {
+      errorMessage = "Limite de envios de e-mail excedido. O Supabase restringe o número de novos cadastros por hora no plano gratuito. Tente novamente mais tarde.";
+    } else if (errorMessage.includes("already registered") || errorMessage.includes("User already exists")) {
+      errorMessage = "Este e-mail já está cadastrado. Faça login para continuar.";
+    } else if (errorMessage.includes("Password should be")) {
+      errorMessage = "A senha deve ter pelo menos 6 caracteres.";
+    }
+    return { error: errorMessage };
   }
 
   // Criar perfil na tabela public.users
@@ -128,6 +139,11 @@ export async function signUp(formData: FormData) {
     if (!profileSync.success) {
       console.error("Erro ao criar perfil:", profileSync.error);
     }
+  }
+
+  if (!authData.session) {
+    // Se não há sessão, o Supabase exige confirmação de email
+    redirect("/login?message=" + encodeURIComponent("Cadastro realizado com sucesso! Por favor, verifique seu e-mail para confirmar a conta antes de entrar."));
   }
 
   await clearActiveRoleCookie();
@@ -238,6 +254,9 @@ export async function switchActiveRole(formData: FormData) {
   }
 
   await setActiveRoleCookie(nextRole);
+  if (baseRole === "admin" && nextRole !== "admin") {
+    await ensureAdminPersona(supabase, user, nextRole);
+  }
   redirect(roleRoutes[nextRole] || "/dashboard/user/feed");
 }
 
@@ -291,22 +310,31 @@ export async function getCurrentUser(
     console.error("Erro ao sincronizar perfil do usuario atual:", profileSync.error);
   }
 
+  const baseRole = await resolveBaseRole(supabase, user);
+  const activeRole = normalizeRole(await getActiveRoleCookie());
+  const activePersonaId = await getActivePersonaCookie();
+  const persona =
+    baseRole === "admin" && activeRole !== "admin" && activePersonaId
+      ? await getPersonaById(supabase, activePersonaId)
+      : null;
+  const effectiveUserId = persona?.id || user.id;
+
   // Buscar perfil via Supabase SDK (nao Drizzle)
-  const { data: profile } = await supabase.from("users").select("*").eq("id", user.id).single();
+  const { data: profile } = await supabase.from("users").select("*").eq("id", effectiveUserId).single();
 
   if (!profile) {
     // Se o perfil nao existe na tabela users, retorna dados do auth
     return {
-      id: user.id,
-      email: user.email || "",
-      role: normalizeRole(user.user_metadata?.role),
+      id: persona?.id || user.id,
+      email: persona?.email || user.email || "",
+      role: persona?.role || normalizeRole(user.user_metadata?.role),
       display_name: user.user_metadata?.display_name || "Usuario",
       handle: user.email?.split("@")[0] || "user",
       bio: null,
       avatar_url: sanitizePersistedAvatarUrl(sanitizeIdentityValue(toRecord(user.user_metadata).avatar_url)),
       website_url: null,
-      created_at: user.created_at,
-      updated_at: user.created_at,
+      created_at: persona?.created_at || user.created_at,
+      updated_at: persona?.updated_at || user.created_at,
     };
   }
 
@@ -321,12 +349,12 @@ export async function getCurrentUser(
   const subscriberMetadataIdentity = getIdentityFromMetadata(user.user_metadata, "subscriber_profile");
 
   if (resolvedContext === "creator") {
-    const creatorIdentity = await getCreatorIdentityByUserId(supabase, user.id);
+    const creatorIdentity = await getCreatorIdentityByUserId(supabase, baseUser.id);
     return mergeIdentity(baseUser, creatorIdentity || creatorMetadataIdentity);
   }
 
   if (resolvedContext === "subscriber") {
-    const subscriberIdentity = await getSubscriberIdentityByUserId(supabase, user.id);
+    const subscriberIdentity = await getSubscriberIdentityByUserId(supabase, baseUser.id);
     return mergeIdentity(baseUser, subscriberIdentity || subscriberMetadataIdentity);
   }
 

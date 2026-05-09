@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { ensurePublicUserProfile } from "./ensure-user-profile";
 import { resolveBaseRole, resolveEffectiveRole } from "./effective-role";
 import { Role, hasAccessTo } from "./roles";
+import { ACTIVE_PERSONA_COOKIE, ensureAdminPersona, getPersonaById } from "./admin-persona";
 
 /**
  * Usado nas Server Actions para garantir autorização no DB
@@ -51,9 +52,33 @@ export async function requireAuth() {
     }
   }
 
+  const baseRole = await resolveBaseRole(supabase, user);
   const role = await resolveEffectiveRole(supabase, user);
+  const activePersonaId = cookieStore.get(ACTIVE_PERSONA_COOKIE)?.value || null;
+  let effectiveUser = user;
+  let isPersona = false;
 
-  return { user, role, supabase };
+  if (baseRole === "admin" && role !== "admin") {
+    const persona =
+      activePersonaId ? await getPersonaById(supabase, activePersonaId) : await ensureAdminPersona(supabase, user, role);
+    if (persona && persona.role === role) {
+      effectiveUser = {
+        ...persona,
+        user_metadata: { role },
+      };
+      isPersona = true;
+    }
+  }
+
+  return {
+    user: effectiveUser,
+    authUser: user,
+    adminUser: baseRole === "admin" ? user : null,
+    role,
+    baseRole,
+    isPersona,
+    supabase,
+  };
 }
 
 /**

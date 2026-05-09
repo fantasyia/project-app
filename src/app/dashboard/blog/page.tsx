@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
-import { MiniWordPressHeader } from "@/components/admin/MiniWordPressHeader";
 import { getEditorArticles, publishArticle, unpublishArticle } from "@/lib/actions/blog";
 import { getSilos } from "@/lib/actions/silo";
 import { auditCollectionSeo } from "@/lib/seo/seo-audit";
@@ -14,12 +13,7 @@ export default async function BlogCMSPage() {
   const siloById = new Map(silos.map((silo) => [silo.id, silo]));
 
   return (
-    <>
-      <MiniWordPressHeader
-        title="Cockpit Editorial"
-        description="Operacao compacta para posts, silos, SEO tecnico e publicacao."
-      />
-      <div className="space-y-4 p-4">
+    <div className="space-y-4">
       <section className="rounded-lg border border-white/12 bg-[#303039] p-4 shadow-xl">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
@@ -122,8 +116,7 @@ export default async function BlogCMSPage() {
           </tbody>
         </table>
       </section>
-      </div>
-    </>
+    </div>
   );
 }
 

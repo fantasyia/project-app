@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { LogOut } from "lucide-react";
 import { CreatorNav } from "./creator-nav";
-import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
+import { NotificationBell } from "@/components/ui/NotificationBell";
+import { PrivilegedRoleMenu } from "@/components/auth/PrivilegedRoleMenu";
 
 export default function CreatorLayout({ children }: { children: ReactNode }) {
   return (
@@ -20,7 +21,8 @@ export default function CreatorLayout({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <RoleSwitcher />
+            <PrivilegedRoleMenu />
+            <NotificationBell href="/dashboard/creator/notifications" />
             <form
               action={async () => {
                 "use server";

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { AlertTriangle, BarChart3, CheckCircle, XCircle } from "lucide-react";
-import { MiniWordPressHeader } from "@/components/admin/MiniWordPressHeader";
 import { getMyArticles } from "@/lib/actions/blog";
 import { getSilos } from "@/lib/actions/silo";
 
@@ -74,12 +73,7 @@ export default async function SeoAuditPage() {
   });
 
   return (
-    <>
-      <MiniWordPressHeader
-        title="SEO"
-        description="Diagnostico da saude editorial do blog, cobrindo silo, metadata e prontidao de publicacao."
-      />
-      <div className="mx-auto max-w-6xl space-y-10 px-6 py-6 md:px-8 md:py-10">
+    <div className="mx-auto max-w-6xl space-y-10">
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
         <MetricCard label="Health score" value={healthScore.toString()} accent={healthScore >= 70 ? "brand" : healthScore >= 40 ? "warning" : "danger"} />
@@ -185,8 +179,7 @@ export default async function SeoAuditPage() {
           />
         </div>
       </section>
-      </div>
-    </>
+    </div>
   );
 }
 

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { MiniWordPressHeader } from "@/components/admin/MiniWordPressHeader";
 import { getEditorArticles } from "@/lib/actions/blog";
 import { getSilos } from "@/lib/actions/silo";
 
@@ -11,12 +10,7 @@ export default async function SilosPage() {
   const visible = silos.filter((silo) => silo.show_in_navigation).length;
 
   return (
-    <>
-      <MiniWordPressHeader
-        title="Silos"
-        description="Controle os hubs, grupos editoriais, links internos e saude do projeto."
-      />
-      <div className="space-y-4 p-4">
+    <div className="space-y-4">
       <section className="rounded-lg border border-white/12 bg-[#303039] p-4">
         <div className="flex items-center justify-between">
           <div>
@@ -65,8 +59,7 @@ export default async function SilosPage() {
           </tbody>
         </table>
       </section>
-      </div>
-    </>
+    </div>
   );
 }
 

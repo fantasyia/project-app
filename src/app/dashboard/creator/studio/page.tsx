@@ -81,7 +81,7 @@ export default async function StudioPage() {
           <div className="flex items-center justify-between rounded-xl border border-white/5 bg-brand-surface-low p-3">
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 rounded-full bg-white/70" />
-              <span className="text-sm text-brand-text-muted">Posts Grátis</span>
+              <span className="text-sm text-brand-text-muted">Posts Plano Básico</span>
             </div>
             <span className="text-sm font-medium text-white">{totals.freePosts}</span>
           </div>

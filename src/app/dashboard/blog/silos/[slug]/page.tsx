@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { MiniWordPressHeader } from "@/components/admin/MiniWordPressHeader";
 import { SiloDetailPanel } from "@/components/silos/SiloDetailPanel";
 import { getEditorArticles } from "@/lib/actions/blog";
 import { getSiloBySlug } from "@/lib/actions/silo";
@@ -14,13 +13,5 @@ export default async function SiloDetailPage({ params }: { params: Promise<{ slu
 
   const siloArticles = articles.filter((article) => article.silo_id === silo.id);
 
-  return (
-    <>
-      <MiniWordPressHeader
-        title="Painel de Silos"
-        description="Estrutura, mapa de links, canibalizacao e SERP do hub."
-      />
-      <SiloDetailPanel silo={silo} articles={siloArticles} />
-    </>
-  );
+  return <SiloDetailPanel silo={silo} articles={siloArticles} />;
 }

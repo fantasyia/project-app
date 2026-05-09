@@ -1,14 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signInWithGoogle, signUp } from "@/lib/actions/auth";
+import { GoogleMark } from "@/components/auth/GoogleMark";
 
-export default function RegisterPage() {
+function friendlyOAuthError(raw: string | null): string | null {
+  if (!raw) return null;
+  if (raw === "google_oauth_unavailable") return "Cadastro com Google indisponível no momento.";
+  if (raw.toLowerCase().includes("provider is not enabled")) return "Login com Google não está habilitado. Use email e senha.";
+  return raw;
+}
+
+function RegisterForm() {
+  const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const invite =
-    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("invite") : null;
+  const invite = searchParams.get("invite");
+
+  useEffect(() => {
+    const urlError = searchParams.get("error");
+    if (urlError) setError(friendlyOAuthError(urlError));
+  }, [searchParams]);
 
   async function handleSubmit(formData: FormData) {
     setLoading(true);
@@ -27,8 +41,9 @@ export default function RegisterPage() {
       <button
         formAction={signInWithGoogle}
         formNoValidate
-        className="w-full rounded-2xl border border-white/10 bg-white/[0.04] py-3 text-sm font-semibold text-white transition hover:border-brand-500/30 hover:bg-brand-500/10"
+        className="flex w-full items-center justify-center gap-3 rounded-2xl border border-white/15 bg-white py-3 text-sm font-semibold text-[#3c4043] transition hover:bg-[#f8fafd]"
       >
+        <GoogleMark />
         Continuar com Google
       </button>
 
@@ -41,8 +56,28 @@ export default function RegisterPage() {
       <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3 text-xs leading-5 text-brand-text-muted">
         {invite
           ? "Convite administrativo detectado. O tipo de conta sera aplicado automaticamente."
-          : "Todo cadastro publico entra como usuario consumidor. Demais areas internas exigem convite do administrador."}
+          : "Todo cadastro publico entra como usuario no Plano Básico. Demais areas internas exigem convite do administrador."}
       </div>
+
+      {!invite ? (
+        <div className="rounded-2xl border border-brand-500/20 bg-brand-500/10 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-brand-400">
+            Desconto de cadastro
+          </p>
+          <div className="mt-3 flex items-end justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Plano Básico</h2>
+              <p className="text-xs leading-5 text-brand-text-muted">
+                Tipo inicial da sua conta, com feed e comentarios liberados.
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-brand-text-muted line-through">R$ 19,90</p>
+              <p className="text-2xl font-semibold text-brand-400">R$ 0,00</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="space-y-2">
         <label className="text-[10px] font-semibold uppercase tracking-widest text-brand-text-muted">
@@ -113,5 +148,13 @@ export default function RegisterPage() {
         </Link>
       </p>
     </form>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="h-96 animate-pulse rounded-3xl bg-white/[0.03]" />}>
+      <RegisterForm />
+    </Suspense>
   );
 }

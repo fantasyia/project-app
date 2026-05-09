@@ -8,7 +8,7 @@ const navItems = [
   { name: "Feed", href: "/dashboard/user/feed", icon: GalleryVerticalEnd },
   { name: "Buscar", href: "/dashboard/user/search", icon: Search },
   { name: "Direct", href: "/dashboard/user/messages", icon: MessageCircle, isCenter: true },
-  { name: "Blog", href: "/blog", icon: Newspaper },
+  { name: "Blog", href: "/dashboard/user/blog", icon: Newspaper },
   { name: "Perfil", href: "/dashboard/user/account", icon: User },
 ];
 
@@ -17,11 +17,11 @@ export function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 z-50 w-full border-t border-white/[0.06] bg-black/95 backdrop-blur-sm">
-      <div className="mx-auto grid w-full grid-cols-5 md:max-w-md">
+      <div className="mx-auto grid w-full grid-cols-5 md:max-w-[768px]">
         {navItems.map((item) => {
           const isActive =
             pathname === item.href ||
-            (item.href !== "/blog" && pathname.startsWith(item.href));
+            pathname.startsWith(item.href);
           const Icon = item.icon;
 
           if (item.isCenter) {

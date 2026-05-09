@@ -17,6 +17,7 @@ type PpvCheckoutFormProps = {
   creatorHandle: string;
   creatorName: string;
   hasActiveSubscription: boolean;
+  hasEmeraldAccess?: boolean;
   hasUnlocked: boolean;
   isAuthenticated: boolean;
   isOwner: boolean;
@@ -48,6 +49,7 @@ export function PpvCheckoutForm({
   creatorHandle,
   creatorName,
   hasActiveSubscription,
+  hasEmeraldAccess,
   hasUnlocked,
   isAuthenticated,
   isOwner,
@@ -153,6 +155,27 @@ export function PpvCheckoutForm({
     );
   }
 
+  if (hasEmeraldAccess) {
+    return (
+      <div className="rounded-[28px] border border-brand-500/20 bg-brand-500/10 p-6">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-brand-500/25 bg-black/20 text-brand-300">
+          <CheckCircle2 size={20} />
+        </div>
+        <h3 className="mt-5 text-2xl font-light tracking-tight">PPV incluso no Esmeralda</h3>
+        <p className="mt-3 text-sm leading-6 text-brand-text-base">
+          Seu plano Esmeralda com {creatorName} libera os PPVs deste creator sem compra avulsa.
+        </p>
+        <Link
+          href={`/${creatorHandle}`}
+          className="mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-brand-500 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-black transition hover:bg-brand-400"
+        >
+          Abrir perfil
+          <ChevronRight size={14} />
+        </Link>
+      </div>
+    );
+  }
+
   if (completed) {
     return (
       <div className="rounded-[28px] border border-brand-500/20 bg-brand-500/10 p-6">
@@ -189,7 +212,7 @@ export function PpvCheckoutForm({
     <form onSubmit={handleSubmit} className="space-y-5">
       {hasActiveSubscription && (
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-brand-text-base">
-          Sua assinatura ou trial com <span className="font-medium text-white">{creatorName}</span> continua ativa, mas este post permanece unitario e exige unlock proprio.
+          Sua assinatura com <span className="font-medium text-white">{creatorName}</span> continua ativa. PPVs ficam inclusos apenas no plano Esmeralda deste creator.
         </div>
       )}
 
@@ -366,7 +389,7 @@ export function PpvCheckoutForm({
       </button>
 
       <p className="text-center text-[10px] uppercase tracking-[0.24em] text-brand-text-muted">
-        PPV unitario; assinatura ou trial nunca substituem este unlock
+        PPV unitario; o plano Esmeralda do creator libera PPVs sem compra avulsa
       </p>
     </form>
   );

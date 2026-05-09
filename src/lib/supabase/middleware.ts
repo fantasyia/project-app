@@ -3,6 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { resolveBaseRole } from "@/lib/auth/resolve-base-role";
 import { hasAccessTo, Role } from "@/lib/auth/roles";
+import { ensureAdminPersona, ACTIVE_PERSONA_COOKIE } from "@/lib/auth/admin-persona";
 import {
   ACTIVE_ROLE_COOKIE,
   canAssumeRole,
@@ -28,6 +29,22 @@ function persistActiveRole(response: NextResponse, request: NextRequest, role: R
     secure: process.env.NODE_ENV === "production",
     maxAge: 60 * 60 * 24 * 30,
   });
+}
+
+function persistActivePersona(response: NextResponse, request: NextRequest, personaUserId: string) {
+  request.cookies.set(ACTIVE_PERSONA_COOKIE, personaUserId);
+  response.cookies.set(ACTIVE_PERSONA_COOKIE, personaUserId, {
+    path: "/",
+    sameSite: "lax",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 60 * 60 * 24 * 30,
+  });
+}
+
+function clearActivePersona(response: NextResponse, request: NextRequest) {
+  request.cookies.delete(ACTIVE_PERSONA_COOKIE);
+  response.cookies.delete(ACTIVE_PERSONA_COOKIE);
 }
 
 export async function updateSession(request: NextRequest) {
@@ -91,6 +108,22 @@ export async function updateSession(request: NextRequest) {
     if (requestedRole && canAssumeRole(baseRole, requestedRole) && role !== requestedRole) {
       role = requestedRole;
       persistActiveRole(supabaseResponse, request, requestedRole);
+
+      if (baseRole === "admin" && requestedRole !== "admin") {
+        const persona = await ensureAdminPersona(supabase, user, requestedRole);
+        if (persona?.id) persistActivePersona(supabaseResponse, request, persona.id);
+      } else if (requestedRole === "admin") {
+        clearActivePersona(supabaseResponse, request);
+      }
+    }
+
+    if (
+      baseRole === "admin" &&
+      role !== "admin" &&
+      !request.cookies.get(ACTIVE_PERSONA_COOKIE)?.value
+    ) {
+      const persona = await ensureAdminPersona(supabase, user, role);
+      if (persona?.id) persistActivePersona(supabaseResponse, request, persona.id);
     }
 
     const checkAccess = (prefix: string, requiredRole: Role) => {

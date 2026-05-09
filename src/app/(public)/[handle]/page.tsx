@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { Grid3X3, Lock, MessageCircle, Heart, ArrowLeft } from "lucide-react";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getCurrentUser } from "@/lib/actions/auth";
-import { getSubscriptionAccess } from "@/lib/auth/entitlement";
+import { canAccessCreatorContent, getSubscriptionAccess, normalizePostTier } from "@/lib/auth/entitlement";
 import { getCreatorIdentityMap } from "@/lib/identity/context-profiles";
 import { parsePostMediaAsset, sanitizePersistedAvatarUrl } from "@/lib/media/post-media";
 import { FollowCreatorButton } from "./follow-creator-button";
@@ -39,6 +39,7 @@ type CreatorPostRecord = {
   content: string | null;
   media_url: string | null;
   access_tier: string;
+  content_tier?: string | null;
   post_type: string;
   price: string | null;
   created_at: string;
@@ -52,6 +53,7 @@ type CreatorPlan = {
   description: string | null;
   price: string;
   currency: string | null;
+  plan_key?: string | null;
 };
 
 function normalizePublicHandle(value: string) {
@@ -212,7 +214,7 @@ export default async function CreatorPublicProfile({ params }: { params: Promise
 
   const { data: plansData } = await publicCatalog
     .from("subscription_plans")
-    .select("id, name, description, price, currency")
+    .select("id, name, description, price, currency, plan_key")
     .eq("creator_id", creatorRecord.id)
     .eq("is_active", true)
     .order("price", { ascending: true });
@@ -220,20 +222,12 @@ export default async function CreatorPublicProfile({ params }: { params: Promise
 
   const { data: posts } = await publicCatalog
     .from("posts")
-    .select("id, content, media_url, access_tier, post_type, price, created_at, likes(user_id), comments(id)")
+    .select("id, content, media_url, access_tier, content_tier, post_type, price, created_at, likes(user_id), comments(id)")
     .eq("author_id", creatorRecord.id)
     .order("created_at", { ascending: false })
     .limit(30);
 
-  const postIds = ((posts || []) as CreatorPostRecord[]).map((post) => post.id);
-  const [unlockSignal, followSignal] = await Promise.all([
-    postIds.length > 0
-      ? publicCatalog
-          .from("ppv_unlocks")
-          .select("post_id")
-          .eq("subscriber_id", user.id)
-          .in("post_id", postIds)
-      : Promise.resolve({ data: [] }),
+  const [followSignal] = await Promise.all([
     publicCatalog
       .from("follows")
       .select("follower_id")
@@ -241,20 +235,19 @@ export default async function CreatorPublicProfile({ params }: { params: Promise
       .eq("following_id", creatorRecord.id)
       .maybeSingle(),
   ]);
-  const unlockedPostIds = new Set(
-    ((unlockSignal.data || []) as Array<{ post_id: string | null }>).flatMap((unlock) =>
-      unlock.post_id ? [unlock.post_id] : []
-    )
-  );
   const isFollowing = Boolean(followSignal.data);
 
-  const enhancedPosts = ((posts || []) as CreatorPostRecord[]).map((p) => {
-    const isPpv = Number.parseFloat(p.price || "0") > 0;
-    const hasAccess =
-      isPrivilegedViewer ||
-      p.access_tier === "free" ||
-      (p.access_tier === "premium" && !isPpv && isSubscribed) ||
-      (isPpv && unlockedPostIds.has(p.id));
+  const enhancedPosts = await Promise.all(((posts || []) as CreatorPostRecord[]).map(async (p) => {
+    const tier = normalizePostTier(p);
+    const access = await canAccessCreatorContent({
+      viewerId: user?.id || null,
+      viewerRole: user?.role || null,
+      creatorId: creatorRecord.id,
+      postId: p.id,
+      tier,
+    });
+    const hasAccess = isPrivilegedViewer || access.hasAccess;
+    const isPpv = tier === "ppv";
     const mediaAsset = parsePostMediaAsset(p.media_url);
 
     return {
@@ -267,7 +260,7 @@ export default async function CreatorPublicProfile({ params }: { params: Promise
       is_video: p.post_type === "video" || mediaAsset.isVideo,
       poster_url: mediaAsset.posterUrl,
     };
-  });
+  }));
 
   const totalPosts = enhancedPosts.length;
   const totalPhotos = enhancedPosts.filter((p) => p.preview_media_url).length;
@@ -306,7 +299,7 @@ export default async function CreatorPublicProfile({ params }: { params: Promise
             Perfil do creator
           </p>
           <p className="mt-2 text-xs leading-5 text-brand-text-muted">
-            Conteudos livres aparecem abertos. Assinatura e PPV continuam protegidos.
+            Conteudos Plano Básico aparecem abertos. Premium, Esmeralda e PPV continuam protegidos.
           </p>
         </div>
       </div>
@@ -440,6 +433,8 @@ export default async function CreatorPublicProfile({ params }: { params: Promise
                         muted
                         playsInline
                         preload="metadata"
+                        controlsList="nodownload noplaybackrate"
+                        disablePictureInPicture
                         className="h-full w-full scale-105 object-cover blur-md"
                       />
                     ) : (
@@ -448,6 +443,7 @@ export default async function CreatorPublicProfile({ params }: { params: Promise
                         alt="Preview bloqueado"
                         fill
                         unoptimized
+                        draggable={false}
                         className="scale-105 object-cover blur-md"
                       />
                     )
@@ -472,16 +468,18 @@ export default async function CreatorPublicProfile({ params }: { params: Promise
                 </div>
               ) : post.media_url ? (
                 post.is_video ? (
-                  <video
-                    src={post.media_url}
-                    poster={post.poster_url || undefined}
-                    controls
-                    playsInline
-                    preload="metadata"
-                    className="h-full w-full object-cover"
-                  />
+                      <video
+                        src={post.media_url}
+                        poster={post.poster_url || undefined}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        controlsList="nodownload noplaybackrate"
+                        disablePictureInPicture
+                        className="h-full w-full object-cover"
+                      />
                 ) : (
-                  <Image src={post.media_url} alt="Post" fill unoptimized className="object-cover" />
+                  <Image src={post.media_url} alt="Post" fill unoptimized draggable={false} className="object-cover" />
                 )
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-brand-surface-low">

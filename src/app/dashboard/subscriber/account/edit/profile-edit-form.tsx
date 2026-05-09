@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ChangeEvent, useEffect, useRef, useState, useTransition } from "react";
 import { Camera, Check, Loader2 } from "lucide-react";
-import { updateSubscriberProfile } from "@/lib/actions/auth";
+import { updatePassword, updateSubscriberProfile } from "@/lib/actions/auth";
 
 type SubscriberProfileFormProps = {
   user: {
@@ -21,6 +21,7 @@ export function SubscriberProfileEditForm({ user }: SubscriberProfileFormProps) 
   const [isPending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [passwordFeedback, setPasswordFeedback] = useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user.avatar_url || null);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -60,7 +61,16 @@ export function SubscriberProfileEditForm({ user }: SubscriberProfileFormProps) 
     setAvatarPreview(URL.createObjectURL(file));
   }
 
+  function handlePasswordSubmit(formData: FormData) {
+    setPasswordFeedback(null);
+    startTransition(async () => {
+      const result = await updatePassword(formData);
+      setPasswordFeedback(result?.error || result?.message || "Senha atualizada.");
+    });
+  }
+
   return (
+    <div className="flex flex-col gap-5">
     <form ref={formRef} action={handleSubmit} className="flex flex-col gap-5">
       <div className="flex flex-col items-center gap-3">
         <div className="relative h-24 w-24 overflow-hidden rounded-full border-2 border-white/10 bg-brand-surface-high">
@@ -161,5 +171,34 @@ export function SubscriberProfileEditForm({ user }: SubscriberProfileFormProps) 
         {isPending ? "Salvando..." : "Salvar alteracoes"}
       </button>
     </form>
+    <form action={handlePasswordSubmit} className="flex flex-col gap-4 rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-brand-300">Seguranca</p>
+        <h2 className="mt-2 text-lg font-semibold text-white">Alterar senha</h2>
+      </div>
+      <input
+        name="password"
+        type="password"
+        minLength={6}
+        placeholder="Nova senha"
+        className="rounded-xl border border-white/10 bg-brand-surface-low px-4 py-3 text-sm text-white outline-none placeholder:text-brand-text-muted/50 focus:border-brand-500/40"
+      />
+      <input
+        name="confirmPassword"
+        type="password"
+        minLength={6}
+        placeholder="Confirmar nova senha"
+        className="rounded-xl border border-white/10 bg-brand-surface-low px-4 py-3 text-sm text-white outline-none placeholder:text-brand-text-muted/50 focus:border-brand-500/40"
+      />
+      {passwordFeedback ? <p className="text-xs text-brand-text-muted">{passwordFeedback}</p> : null}
+      <button
+        type="submit"
+        disabled={isPending}
+        className="rounded-xl border border-brand-500/30 bg-brand-500/10 py-3 text-sm font-semibold text-brand-300 disabled:opacity-50"
+      >
+        Atualizar senha
+      </button>
+    </form>
+    </div>
   );
 }

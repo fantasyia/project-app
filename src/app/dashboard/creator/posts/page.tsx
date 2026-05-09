@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { deletePost, getMyPosts } from "@/lib/actions/posts";
 import { parsePostMediaAsset } from "@/lib/media/post-media";
+import { CommentModeration } from "./comment-moderation";
 
 export const metadata = { title: "Meus Conteúdos | Fantasyia" };
 
@@ -143,9 +144,9 @@ export default async function CreatorPostsPage() {
                               <Crown size={10} /> R$ {post.price}
                             </>
                           ) : post.access_tier === "premium" ? (
-                            "Membros"
+                            "Premium"
                           ) : (
-                            "Grátis"
+                            "Plano Básico"
                           )}
                         </span>
                         
@@ -175,6 +176,7 @@ export default async function CreatorPostsPage() {
                       <span>•</span>
                       <span>{post.likes?.length || 0} curtidas</span>
                     </div>
+                    <CommentModeration postId={post.id} initialCount={post.comments?.length || 0} />
                   </div>
                 </article>
               );

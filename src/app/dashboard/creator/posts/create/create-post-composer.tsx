@@ -11,6 +11,7 @@ import {
   Crown,
   DollarSign,
   Globe,
+  Gem,
   ImagePlus,
   LockKeyhole,
   Sparkles,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import { createPost } from "@/lib/actions/posts";
 
-type MonetizationMode = "free" | "premium" | "ppv";
+type MonetizationMode = "basic" | "premium" | "emerald" | "ppv";
 
 const TABS: Array<{
   value: MonetizationMode;
@@ -29,11 +30,11 @@ const TABS: Array<{
   note: string;
 }> = [
   {
-    value: "free",
-    label: "Gratis",
+    value: "basic",
+    label: "Plano Básico",
     icon: <Globe size={16} />,
-    description: "Post aberto para descoberta e aquecimento do feed.",
-    note: "Use para teaser, alcance e retencao.",
+    description: "Conteudo lite aberto para todos os users.",
+    note: "Sem 18+, sem conteudo que pertence a Premium, Esmeralda ou PPV.",
   },
   {
     value: "premium",
@@ -43,11 +44,18 @@ const TABS: Array<{
     note: "Ideal para entrega recorrente e bastidores.",
   },
   {
+    value: "emerald",
+    label: "Esmeralda",
+    icon: <Gem size={16} />,
+    description: "Conteudo de camada superior para assinantes Esmeralda.",
+    note: "Inclui chat, Premium, Esmeralda e PPVs liberados deste creator.",
+  },
+  {
     value: "ppv",
     label: "PPV",
     icon: <DollarSign size={16} />,
-    description: "Unlock individual do post, mesmo para assinantes.",
-    note: "A assinatura nao libera esse item automaticamente.",
+    description: "Unlock individual com preco definido por post.",
+    note: "Assinantes Esmeralda acessam os PPVs deste creator sem compra avulsa.",
   },
 ];
 
@@ -61,7 +69,7 @@ export function CreatePostComposer() {
   const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState<string | null>(null);
   const [thumbnailFileName, setThumbnailFileName] = useState("");
   const [caption, setCaption] = useState("");
-  const [accessTier, setAccessTier] = useState<MonetizationMode>("free");
+  const [accessTier, setAccessTier] = useState<MonetizationMode>("basic");
   const [ppvPrice, setPpvPrice] = useState("");
   const [postType, setPostType] = useState<"image" | "video">("image");
 
@@ -158,7 +166,7 @@ export function CreatePostComposer() {
           Publique com <span className="text-brand-500">cara de app</span>
         </h1>
         <p className="mt-3 text-sm font-light leading-relaxed text-brand-text-base">
-          Upload real para Storage, preview nativo e monetizacao por abas entre Gratis, Assinatura e PPV.
+          Upload real para Storage, preview nativo e monetizacao por Plano Básico, Premium, Esmeralda e PPV.
         </p>
 
         <div className="mt-4 grid grid-cols-2 gap-3">

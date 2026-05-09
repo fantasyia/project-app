@@ -1,6 +1,6 @@
 import Image from "next/image";
-import Link from "next/link";
-import { ArrowLeft, Bookmark, Image as ImageIcon } from "lucide-react";
+import { Bookmark, Image as ImageIcon } from "lucide-react";
+import { BackButton } from "@/components/navigation/BackButton";
 import { getBookmarks, getBookmarkCollections } from "@/lib/actions/engagement";
 import { parsePostMediaAsset } from "@/lib/media/post-media";
 
@@ -14,12 +14,11 @@ export default async function BookmarksPage() {
     <div className="flex flex-col">
       <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
         <div className="flex items-center gap-3">
-          <Link
-            href="/dashboard/user/feed"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-brand-text-muted transition hover:text-white"
-          >
-            <ArrowLeft size={20} />
-          </Link>
+          <BackButton
+            fallbackHref="/dashboard/user/feed"
+            label=""
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-brand-text-muted transition hover:text-white"
+          />
           <h1 className="text-base font-semibold text-white">Salvos</h1>
         </div>
         <span className="text-xs text-brand-text-muted">{bookmarks.length} itens</span>

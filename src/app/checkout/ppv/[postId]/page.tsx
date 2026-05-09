@@ -186,9 +186,9 @@ export default async function PpvCheckoutPage({ params }: { params: Promise<{ po
                 <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
                   <p className="text-[10px] uppercase tracking-[0.28em] text-brand-text-muted">Assinatura</p>
                   <p className="mt-2 text-sm leading-6 text-brand-text-base">
-                    {viewer.hasActiveSubscription
-                      ? "Mesmo com assinatura ou trial ativo, este conteudo continua sendo unitario. A compra PPV permanece obrigatoria."
-                      : "Assinatura e PPV continuam separados. Este conteudo exige compra individual para abrir."}
+                    {viewer.hasEmeraldAccess
+                      ? "Seu plano Esmeralda com este creator inclui os PPVs sem compra avulsa."
+                      : "Premium e PPV continuam separados. O PPV exige compra individual, salvo liberacao promocional ou plano Esmeralda do creator."}
                   </p>
                 </div>
               </div>
@@ -209,6 +209,7 @@ export default async function PpvCheckoutPage({ params }: { params: Promise<{ po
                 creatorHandle={creator.handle}
                 creatorName={creator.display_name}
                 hasActiveSubscription={viewer.hasActiveSubscription}
+                hasEmeraldAccess={viewer.hasEmeraldAccess}
                 hasUnlocked={viewer.hasUnlocked}
                 isAuthenticated={viewer.isAuthenticated}
                 isOwner={viewer.isOwner}

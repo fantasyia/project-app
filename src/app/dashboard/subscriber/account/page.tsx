@@ -4,10 +4,9 @@ import {
   Bell,
   Bookmark,
   ChevronRight,
-  CreditCard,
-  History,
   LogOut,
   Settings,
+  Sparkles,
 } from "lucide-react";
 import { getCurrentUser, signOut } from "@/lib/actions/auth";
 
@@ -56,18 +55,29 @@ export default async function AccountPage() {
         >
           Editar perfil
         </Link>
+
+        <div className="mt-5 w-full rounded-2xl border border-brand-500/20 bg-brand-500/10 p-4 text-left">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-brand-400">
+            <Sparkles size={13} />
+            Tipo de conta
+          </div>
+          <div className="mt-3 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-lg font-semibold text-white">Plano Básico</p>
+              <p className="text-xs text-brand-text-muted">Acesso inicial da conta</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-brand-text-muted line-through">R$ 19,90</p>
+              <p className="text-xl font-semibold text-brand-400">R$ 0,00</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="h-px bg-white/[0.06]" />
 
       <nav className="flex flex-col">
         {[
-          {
-            href: "/dashboard/user/purchases",
-            label: "Compras",
-            description: "Historico de unlocks e pagamentos",
-            icon: History,
-          },
           {
             href: "/dashboard/user/bookmarks",
             label: "Salvos",
@@ -79,12 +89,6 @@ export default async function AccountPage() {
             label: "Notificacoes",
             description: "Alertas e atualizacoes",
             icon: Bell,
-          },
-          {
-            href: "/pricing",
-            label: "Planos",
-            description: "Assinaturas disponiveis",
-            icon: CreditCard,
           },
           {
             href: "/dashboard/user/account",

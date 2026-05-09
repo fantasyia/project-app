@@ -11,7 +11,9 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
-import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
+import { DashboardCascadeMenu } from "@/components/layouts/DashboardCascadeMenu";
+import { NotificationBell } from "@/components/ui/NotificationBell";
+import { PrivilegedRoleMenu } from "@/components/auth/PrivilegedRoleMenu";
 
 const adminLinks = [
   { href: "/dashboard/admin/overview", icon: <LayoutDashboard size={18} strokeWidth={1.5} />, label: "Geral" },
@@ -25,17 +27,18 @@ const adminLinks = [
   { href: "/dashboard/admin/settings", icon: <Settings size={18} strokeWidth={1.5} />, label: "Ajustes" },
 ];
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(0,168,107,0.12),transparent_34%),linear-gradient(180deg,#070908_0%,#030303_100%)] text-brand-text">
-      <div className="mx-auto min-h-screen w-full max-w-md border-x border-white/8 bg-black/30 shadow-[0_24px_90px_rgba(0,0,0,0.42)]">
+      <div className="mx-auto min-h-screen w-full max-w-md border-x border-white/8 bg-black/30 shadow-[0_24px_90px_rgba(0,0,0,0.42)] md:max-w-[768px]">
         <header className="sticky top-0 z-40 border-b border-white/8 bg-black/75 backdrop-blur-xl">
           <div className="flex items-center justify-between px-4 py-4">
             <Link href="/dashboard/admin/overview" className="text-lg font-thin uppercase tracking-[0.2em] text-white">
               Fantasy<span className="text-brand-500">ia</span>
             </Link>
             <div className="flex items-center gap-2">
-              <RoleSwitcher />
+              <PrivilegedRoleMenu />
+              <NotificationBell href="/dashboard/admin/notifications" />
               <form
                 action={async () => {
                   "use server";
@@ -45,7 +48,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               >
                 <button
                   type="submit"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10 text-red-300"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10 text-red-300 transition hover:text-red-200"
                   aria-label="Sair"
                 >
                   <LogOut size={16} strokeWidth={1.6} />
@@ -63,18 +66,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
           </div>
 
-          <nav className="flex gap-2 overflow-x-auto px-4 pb-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {adminLinks.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="inline-flex min-w-fit items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-text-muted transition hover:border-brand-500/30 hover:text-brand-300"
-              >
-                {item.icon}
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          <div className="px-4 pb-4">
+            <DashboardCascadeMenu label="Menu do Admin CRM" triggerLabel="Admin CRM" items={adminLinks} />
+          </div>
         </header>
 
         <main>{children}</main>

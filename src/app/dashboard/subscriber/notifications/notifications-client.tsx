@@ -191,6 +191,9 @@ function getIcon(type: string) {
       return <MessageSquare size={16} className="text-sky-300" />;
     case "post_liked":
       return <Heart size={16} className="text-rose-300" />;
+    case "comments":
+    case "post_commented":
+      return <MessageSquare size={16} className="text-brand-300" />;
     case "new_follower":
       return <UserPlus size={16} className="text-brand-300" />;
     case "new_subscription":

@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { MessageCircle, Bell } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { BottomNav } from "@/components/ui/BottomNav";
-import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
+import { NotificationBell } from "@/components/ui/NotificationBell";
+import { PrivilegedRoleMenu } from "@/components/auth/PrivilegedRoleMenu";
 
 export default function SubscriberLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -12,19 +13,14 @@ export default function SubscriberLayout({ children }: { children: React.ReactNo
             Fantasy<span className="text-brand-500">ia</span>
           </h1>
           <div className="flex items-center gap-1">
-            <RoleSwitcher />
+            <PrivilegedRoleMenu />
             <Link
               href="/dashboard/user/messages"
               className="flex h-10 w-10 items-center justify-center rounded-full text-brand-text-muted transition-colors hover:text-white"
             >
               <MessageCircle size={22} strokeWidth={1.5} />
             </Link>
-            <Link
-              href="/dashboard/user/notifications"
-              className="flex h-10 w-10 items-center justify-center rounded-full text-brand-text-muted transition-colors hover:text-white"
-            >
-              <Bell size={22} strokeWidth={1.5} />
-            </Link>
+            <NotificationBell href="/dashboard/user/notifications" />
           </div>
         </header>
 

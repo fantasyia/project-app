@@ -1,7 +1,7 @@
 "use server";
 
 import { getCurrentUser } from "@/lib/actions/auth";
-import { hasActiveSubscription, hasUnlockedPost } from "@/lib/auth/entitlement";
+import { hasActiveSubscription, hasEmeraldAccess, hasUnlockedPost } from "@/lib/auth/entitlement";
 import { requireRole } from "@/lib/auth/rbac";
 import { getCreatorIdentityByUserId } from "@/lib/identity/context-profiles";
 import { createClient } from "@/lib/supabase/server";
@@ -195,7 +195,7 @@ export async function mockSubscribe(creatorId: string, planId: string) {
 
     const { data: plan, error: planError } = await supabase
       .from("subscription_plans")
-      .select("id, creator_id, name, description, price, is_active")
+      .select("id, creator_id, name, description, price, is_active, plan_key")
       .eq("id", normalizedPlanId)
       .maybeSingle();
 
@@ -293,6 +293,9 @@ export async function mockUnlockPpv(postId: string) {
     if (!post) return { error: "Post nao encontrado." };
     if (post.author_id === user.id) return { error: "Voce ja tem acesso a este conteudo." };
     if (Number.parseFloat(post.price || "0") <= 0) return { error: "Este post nao exige unlock PPV." };
+    if (await hasEmeraldAccess(user.id, post.author_id)) {
+      return { success: true, creatorHandle: (await getCreatorSummaryById(post.author_id))?.handle || null };
+    }
 
     const { data: unlock, error } = await supabase
       .from("ppv_unlocks")
@@ -355,17 +358,42 @@ export async function getCreatorPlans() {
   return data || [];
 }
 
+export async function getCreatorPricingSettings() {
+  const { user, supabase } = await requireRole("creator");
+
+  const { data } = await supabase
+    .from("creator_profiles")
+    .select("default_ppv_price")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const { data: promotions } = await supabase
+    .from("creator_promotions")
+    .select("*")
+    .eq("creator_id", user.id)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  return {
+    defaultPpvPrice: (data as { default_ppv_price?: string | null } | null)?.default_ppv_price || "",
+    promotions: promotions || [],
+  };
+}
+
 export async function createCreatorPlan(formData: FormData) {
   const { user, supabase } = await requireRole("creator");
 
   const name = formData.get("name") as string;
   const description = formData.get("description") as string;
   const price = formData.get("price") as string;
+  const planKey = formData.get("planKey") === "emerald" ? "emerald" : "premium";
 
   if (!name || !price) return { error: "Nome e preco sao obrigatorios." };
 
   const { error } = await supabase.from("subscription_plans").insert({
     creator_id: user.id,
+    plan_key: planKey,
     name,
     description,
     price,
@@ -377,6 +405,64 @@ export async function createCreatorPlan(formData: FormData) {
   if (error) return { error: error.message };
 
   revalidatePath("/dashboard/creator/plans");
+  return { success: true };
+}
+
+export async function updateCreatorPricingSettings(formData: FormData) {
+  const { user, supabase } = await requireRole("creator");
+  const defaultPpvPrice = ((formData.get("defaultPpvPrice") as string) || "").trim();
+  const numericPrice = defaultPpvPrice ? Number.parseFloat(defaultPpvPrice) : 0;
+
+  if (defaultPpvPrice && (!Number.isFinite(numericPrice) || numericPrice < 1)) {
+    return { error: "Informe um PPV padrao valido ou deixe vazio." };
+  }
+
+  const { error } = await supabase
+    .from("creator_profiles")
+    .update({
+      default_ppv_price: defaultPpvPrice || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard/creator/plans");
+  return { success: true };
+}
+
+export async function createCreatorPromotion(formData: FormData) {
+  const { user, supabase } = await requireRole("creator");
+  const promotionType = formData.get("promotionType") === "basic_chat" ? "basic_chat" : "basic_ppv";
+  const title = ((formData.get("title") as string) || "").trim() || "Promocao Plano Básico";
+  const discountPercent = Number.parseInt((formData.get("discountPercent") as string) || "5", 10);
+  const userLimit = Number.parseInt((formData.get("userLimit") as string) || "10", 10);
+  const startsAt = new Date();
+  const endsAt = new Date(startsAt);
+  endsAt.setMonth(endsAt.getMonth() + 3);
+
+  if (!Number.isFinite(discountPercent) || discountPercent < 5 || discountPercent > 50) {
+    return { error: "O desconto precisa ficar entre 5% e 50%." };
+  }
+  if (!Number.isFinite(userLimit) || userLimit < 1) {
+    return { error: "Informe uma quantidade limite valida." };
+  }
+
+  const { error } = await supabase.from("creator_promotions").insert({
+    creator_id: user.id,
+    promotion_type: promotionType,
+    title,
+    discount_percent: discountPercent,
+    user_limit: userLimit,
+    starts_at: startsAt.toISOString(),
+    ends_at: endsAt.toISOString(),
+    is_active: true,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard/creator/plans");
+  revalidatePath("/dashboard/user/feed");
   return { success: true };
 }
 
@@ -415,7 +501,7 @@ export async function getCreatorPublicPlans(creatorId: string) {
 
   const { data } = await supabase
     .from("subscription_plans")
-    .select("id, name, description, price, currency")
+    .select("id, name, description, price, currency, plan_key")
     .eq("creator_id", creatorId)
     .eq("is_active", true)
     .order("price", { ascending: true });
@@ -430,7 +516,7 @@ export async function getSubscriptionCheckoutDetails(planId: string) {
 
   const { data: plan, error } = await supabase
     .from("subscription_plans")
-    .select("id, creator_id, name, description, price, currency, is_active")
+    .select("id, creator_id, name, description, price, currency, is_active, plan_key")
     .eq("id", normalizedPlanId)
     .eq("is_active", true)
     .maybeSingle();
@@ -454,6 +540,7 @@ export async function getSubscriptionCheckoutDetails(planId: string) {
       price: plan.price,
       currency: plan.currency || "BRL",
       billingCycle,
+      planKey: plan.plan_key || "premium",
     },
     creator,
     viewer: {
@@ -470,7 +557,7 @@ export async function getPpvCheckoutDetails(postId: string) {
 
   const { data: post, error } = await supabase
     .from("posts")
-    .select("id, author_id, content, media_url, post_type, access_tier, price, created_at")
+    .select("id, author_id, content, media_url, post_type, access_tier, content_tier, price, created_at")
     .eq("id", postId)
     .maybeSingle();
 
@@ -483,6 +570,7 @@ export async function getPpvCheckoutDetails(postId: string) {
   const isAuthenticated = Boolean(user);
   const isOwner = user?.id === creator.id;
   const unlocked = user && !isOwner ? await hasUnlockedPost(user.id, post.id) : false;
+  const emeraldAccess = user && !isOwner ? await hasEmeraldAccess(user.id, creator.id) : false;
   const subscribed = user && !isOwner ? await hasActiveSubscription(user.id, creator.id) : false;
 
   return {
@@ -492,6 +580,7 @@ export async function getPpvCheckoutDetails(postId: string) {
       mediaUrl: post.media_url,
       postType: post.post_type,
       accessTier: post.access_tier,
+      contentTier: post.content_tier || "ppv",
       price: post.price || "0",
       createdAt: post.created_at,
     },
@@ -501,6 +590,7 @@ export async function getPpvCheckoutDetails(postId: string) {
       isOwner,
       hasUnlocked: unlocked,
       hasActiveSubscription: subscribed,
+      hasEmeraldAccess: emeraldAccess,
     },
   };
 }

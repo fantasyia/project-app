@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/actions/auth";
+import { PrivilegedRoleMenu } from "@/components/auth/PrivilegedRoleMenu";
 
 export const metadata = {
   title: "Fantasyia - Universo Premium",
@@ -16,6 +17,7 @@ export default async function PublicLayout({ children }: { children: React.React
             Fantasy<span className="text-brand-500">ia</span>
           </Link>
           <div className="flex items-center gap-2">
+            <PrivilegedRoleMenu />
             {user ? null : (
               <>
                 <Link

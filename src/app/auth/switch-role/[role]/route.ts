@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { NextResponse, type NextRequest } from "next/server";
 import { normalizeRole } from "@/lib/auth/roles";
 import { resolveBaseRole } from "@/lib/auth/effective-role";
-import { ACTIVE_ROLE_COOKIE, canAssumeRole, roleRoutes } from "@/lib/auth/role-session";
+import { ACTIVE_PERSONA_COOKIE, ACTIVE_ROLE_COOKIE, canAssumeRole, roleRoutes } from "@/lib/auth/role-session";
+import { ensureAdminPersona } from "@/lib/auth/admin-persona";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(
@@ -32,5 +33,19 @@ export async function GET(
     secure: process.env.NODE_ENV === "production",
     maxAge: 60 * 60 * 24 * 30,
   });
+  if (baseRole === "admin" && nextRole !== "admin") {
+    const persona = await ensureAdminPersona(supabase, user, nextRole);
+    if (persona?.id) {
+      response.cookies.set(ACTIVE_PERSONA_COOKIE, persona.id, {
+        path: "/",
+        sameSite: "lax",
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 60 * 60 * 24 * 30,
+      });
+    }
+  } else {
+    response.cookies.delete(ACTIVE_PERSONA_COOKIE);
+  }
   return response;
 }

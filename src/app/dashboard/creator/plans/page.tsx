@@ -1,5 +1,5 @@
 import { Crown } from "lucide-react";
-import { getCreatorPlans } from "@/lib/actions/checkout";
+import { getCreatorPlans, getCreatorPricingSettings } from "@/lib/actions/checkout";
 import { PlansClient } from "./plans-client";
 
 export const metadata = { title: "Meus Planos | Fantasyia" };
@@ -11,10 +11,26 @@ export type CreatorPlan = {
   price: string;
   currency: string | null;
   is_active: boolean;
+  plan_key?: "premium" | "emerald" | null;
+};
+
+export type CreatorPricingSettings = {
+  defaultPpvPrice: string;
+  promotions: Array<{
+    id: string;
+    promotion_type: "basic_ppv" | "basic_chat";
+    title: string;
+    discount_percent: number;
+    user_limit: number;
+    ends_at: string;
+  }>;
 };
 
 export default async function CreatorPlansPage() {
-  const plans = (await getCreatorPlans()) as CreatorPlan[];
+  const [plans, settings] = await Promise.all([
+    getCreatorPlans() as Promise<CreatorPlan[]>,
+    getCreatorPricingSettings() as Promise<CreatorPricingSettings>,
+  ]);
   const activePlans = plans.filter((plan) => plan.is_active).length;
 
   return (
@@ -45,7 +61,7 @@ export default async function CreatorPlansPage() {
       <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
       {/* Interactive Client Component for listing and creating plans */}
-      <PlansClient initialPlans={plans} />
+      <PlansClient initialPlans={plans} initialSettings={settings} />
     </div>
   );
 }
