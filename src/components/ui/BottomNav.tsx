@@ -17,7 +17,7 @@ export function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 z-50 w-full border-t border-white/[0.06] bg-black/95 backdrop-blur-sm">
-      <div className="mx-auto grid w-full grid-cols-5 md:max-w-[768px]">
+      <div className="fantasyia-bottom-frame grid grid-cols-5">
         {navItems.map((item) => {
           const isActive =
             pathname === item.href ||

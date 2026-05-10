@@ -33,7 +33,7 @@ export async function PublicSiloPage({
   const support = articles.filter((article) => article.silo_role === "SUPPORT" || !article.silo_role);
   const aux = articles.filter((article) => article.silo_role === "AUX");
   const groups = Array.from(new Set(articles.map((article) => article.silo_group).filter(Boolean)));
-  const widthClass = embedded ? "max-w-[768px]" : "max-w-6xl";
+  const widthClass = embedded ? "max-w-[820px]" : "max-w-6xl";
 
   return (
     <div className={embedded ? "bg-black text-white" : "min-h-screen bg-black text-white"}>

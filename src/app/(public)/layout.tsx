@@ -10,7 +10,7 @@ export const metadata = {
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   return (
-    <div className="flex min-h-screen justify-center bg-black text-brand-text">
+    <div className="flex min-h-dvh justify-center bg-black text-brand-text">
       <div className="app-shell flex flex-col md:border-x md:border-white/[0.04]">
         <header className="sticky top-0 z-50 flex items-center justify-between border-b border-white/[0.06] bg-black/90 px-4 py-3 backdrop-blur-md">
           <Link href="/" className="text-xl font-semibold tracking-tight text-white">

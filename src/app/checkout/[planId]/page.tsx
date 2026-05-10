@@ -40,8 +40,8 @@ export default async function CheckoutPage({ params }: { params: Promise<{ planI
 
   if (!checkout) {
     return (
-      <div className="min-h-screen bg-black text-white px-6 py-16">
-        <div className="mx-auto max-w-md rounded-[32px] border border-white/10 bg-white/[0.03] p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+      <div className="flex min-h-dvh justify-center bg-black px-6 py-16 text-white">
+        <div className="w-full max-w-[820px] rounded-[32px] border border-white/10 bg-white/[0.03] p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
           <p className="text-[11px] uppercase tracking-[0.35em] text-brand-text-muted">Checkout</p>
           <h1 className="mt-4 text-3xl font-light tracking-tight">Plano indisponivel</h1>
           <p className="mt-3 text-sm leading-6 text-brand-text-muted">
@@ -64,8 +64,8 @@ export default async function CheckoutPage({ params }: { params: Promise<{ planI
   const priceLabel = formatCurrency(plan.price, plan.currency);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(0,168,107,0.24),_transparent_34%),linear-gradient(180deg,_#080b09_0%,_#050505_48%,_#020202_100%)] text-white">
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-4 py-4">
+    <div className="flex min-h-dvh justify-center bg-[radial-gradient(circle_at_top,_rgba(0,168,107,0.24),_transparent_34%),linear-gradient(180deg,_#080b09_0%,_#050505_48%,_#020202_100%)] text-white">
+      <div className="fantasyia-app-frame flex flex-col px-4 py-4">
         <header className="sticky top-0 z-40 mb-4 rounded-full border border-white/10 bg-black/55 px-4 py-3 backdrop-blur-xl">
           <div className="flex items-center justify-between gap-3">
             <Link

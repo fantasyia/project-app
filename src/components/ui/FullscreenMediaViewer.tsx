@@ -65,7 +65,7 @@ export function FullscreenMediaViewer({
         >
           <div
             onClick={(event) => event.stopPropagation()}
-            className="relative h-[82dvh] w-full max-w-[768px] select-none md:h-[86vh]"
+            className="relative h-[82dvh] w-full max-w-[820px] select-none md:h-[86vh]"
             style={{
               WebkitTouchCallout: "none",
               WebkitUserSelect: "none",

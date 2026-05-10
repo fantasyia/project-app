@@ -4,7 +4,7 @@ export const metadata = {
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-brand-bg flex flex-col items-center justify-center p-4">
+    <div className="flex min-h-dvh flex-col items-center justify-center overflow-x-hidden bg-brand-bg p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
           <h1 className="text-4xl font-thin tracking-[-0.04em] text-white uppercase">

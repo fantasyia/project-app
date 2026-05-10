@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/actions/auth";
 import { getCreatorStudioSnapshot } from "@/lib/actions/wallet";
-import { ArrowUpRight, Crown, Plus, Radar, Wallet, BarChart3, TrendingUp } from "lucide-react";
+import { ArrowUpRight, Crown, Plus, Wallet, BarChart3, TrendingUp } from "lucide-react";
 
 export const metadata = { title: "Painel Geral | Fantasyia" };
 
@@ -19,11 +19,7 @@ export default async function StudioPage() {
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-brand-bg/90" />
         
         <div className="relative z-10">
-          <div className="inline-flex items-center gap-2 rounded-full bg-brand-500/20 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-brand-300">
-            <Radar size={12} />
-            Studio Ativo
-          </div>
-          <h1 className="mt-3 text-2xl font-semibold text-white">
+          <h1 className="text-2xl font-semibold text-white">
             Olá, <span className="brand-gradient-text">{firstName}</span>
           </h1>
           <p className="mt-1 text-sm text-brand-text-muted">

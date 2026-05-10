@@ -3,6 +3,8 @@
 import { requireRole } from "@/lib/auth/rbac";
 import { revalidatePath } from "next/cache";
 
+export type MediaReviewAction = "recommendation" | "warning" | "removal";
+
 export async function getAllUsers(roleFilter?: string) {
   const { supabase } = await requireRole("admin");
   let query = supabase.from("users").select("*").order("created_at", { ascending: false });
@@ -140,21 +142,6 @@ export async function getGlobalFeedAudit() {
   }));
 }
 
-export async function forceDeletePost(postId: string) {
-  const { supabase } = await requireRole("admin");
-
-  // Admin bypasses author_id check
-  const { error } = await supabase
-    .from("posts")
-    .delete()
-    .eq("id", postId);
-
-  if (error) return { error: error.message };
-
-  revalidatePath("/dashboard/admin/moderation");
-  return { success: true };
-}
-
 async function createModerationNotification(
   supabase: Awaited<ReturnType<typeof requireRole>>["supabase"],
   creatorId: string,
@@ -175,19 +162,90 @@ async function sendModerationEmail() {
   return "supabase_email_not_configured";
 }
 
-export async function warnCreatorForPost(postId: string, reason: string, recommendation = "") {
-  const { user, adminUser, supabase } = await requireRole("admin");
-  const normalizedReason = reason.trim();
-  const normalizedRecommendation = recommendation.trim();
-
-  if (!normalizedReason) return { error: "Informe o motivo da advertencia." };
-
+async function getPostForModeration(
+  supabase: Awaited<ReturnType<typeof requireRole>>["supabase"],
+  postId: string
+) {
   const { data: post } = await supabase
     .from("posts")
     .select("id, author_id")
     .eq("id", postId)
     .maybeSingle();
 
+  return post;
+}
+
+async function insertModerationAction(
+  supabase: Awaited<ReturnType<typeof requireRole>>["supabase"],
+  payload: {
+    action_type: "warning" | "recommendation" | "block" | "removal";
+    creator_id: string;
+    post_id?: string | null;
+    admin_user_id?: string | null;
+    persona_user_id?: string | null;
+    reason: string;
+    recommendation?: string | null;
+    email_status?: string;
+  }
+) {
+  const { error } = await supabase.from("moderation_actions").insert(payload);
+
+  if (!error || payload.action_type !== "removal") return error;
+
+  // Compatibility while older Supabase environments still lack the "removal" enum value.
+  const fallback = {
+    ...payload,
+    action_type: "recommendation" as const,
+    recommendation: payload.recommendation
+      ? `[remocao de midia] ${payload.recommendation}`
+      : "[remocao de midia]",
+  };
+  const { error: fallbackError } = await supabase.from("moderation_actions").insert(fallback);
+  return fallbackError;
+}
+
+export async function recommendCreatorForPost(postId: string, recommendation: string) {
+  const { user, adminUser, supabase } = await requireRole("admin");
+  const normalizedRecommendation = recommendation.trim();
+
+  if (!normalizedRecommendation) return { error: "Informe a recomendacao para o creator." };
+
+  const post = await getPostForModeration(supabase, postId);
+  if (!post?.author_id) return { error: "Post nao encontrado." };
+
+  const emailStatus = await sendModerationEmail();
+  const error = await insertModerationAction(supabase, {
+    action_type: "recommendation",
+    creator_id: post.author_id,
+    post_id: post.id,
+    admin_user_id: adminUser?.id || user.id,
+    persona_user_id: user.id !== adminUser?.id ? user.id : null,
+    reason: normalizedRecommendation,
+    recommendation: normalizedRecommendation,
+    email_status: emailStatus,
+  });
+
+  if (error) return { error: error.message };
+
+  await createModerationNotification(
+    supabase,
+    post.author_id,
+    "Recomendacao de midia",
+    normalizedRecommendation,
+    { post_id: post.id, recommendation: normalizedRecommendation }
+  );
+
+  revalidatePath("/dashboard/admin/moderation");
+  return { success: true };
+}
+
+export async function warnCreatorForPost(postId: string, reason: string) {
+  const { user, adminUser, supabase } = await requireRole("admin");
+  const normalizedReason = reason.trim();
+
+  if (!normalizedReason) return { error: "Informe o motivo da advertencia." };
+
+  const post = await getPostForModeration(supabase, postId);
   if (!post?.author_id) return { error: "Post nao encontrado." };
 
   const { error } = await supabase.from("creator_warnings").insert({
@@ -200,29 +258,90 @@ export async function warnCreatorForPost(postId: string, reason: string, recomme
   if (error) return { error: error.message };
 
   const emailStatus = await sendModerationEmail();
-  await supabase.from("moderation_actions").insert({
-    action_type: normalizedRecommendation ? "recommendation" : "warning",
+  const actionError = await insertModerationAction(supabase, {
+    action_type: "warning",
     creator_id: post.author_id,
     post_id: post.id,
     admin_user_id: adminUser?.id || user.id,
     persona_user_id: user.id !== adminUser?.id ? user.id : null,
     reason: normalizedReason,
-    recommendation: normalizedRecommendation || null,
     email_status: emailStatus,
   });
+
+  if (actionError) return { error: actionError.message };
 
   await createModerationNotification(
     supabase,
     post.author_id,
     "Advertencia de midia",
-    normalizedRecommendation
-      ? `${normalizedReason} Orientacao: ${normalizedRecommendation}`
-      : normalizedReason,
-    { post_id: post.id, reason: normalizedReason, recommendation: normalizedRecommendation || null }
+    normalizedReason,
+    { post_id: post.id, reason: normalizedReason }
   );
 
   revalidatePath("/dashboard/admin/moderation");
   return { success: true };
+}
+
+export async function forceDeletePost(postId: string, reason = "Midia removida pelo admin") {
+  const { user, adminUser, supabase } = await requireRole("admin");
+  const normalizedReason = reason.trim();
+
+  if (!normalizedReason) return { error: "Informe o motivo da remocao." };
+
+  const post = await getPostForModeration(supabase, postId);
+  if (!post?.author_id) return { error: "Post nao encontrado." };
+
+  const emailStatus = await sendModerationEmail();
+  const actionError = await insertModerationAction(supabase, {
+    action_type: "removal",
+    creator_id: post.author_id,
+    post_id: post.id,
+    admin_user_id: adminUser?.id || user.id,
+    persona_user_id: user.id !== adminUser?.id ? user.id : null,
+    reason: normalizedReason,
+    email_status: emailStatus,
+  });
+
+  if (actionError) return { error: actionError.message };
+
+  await createModerationNotification(
+    supabase,
+    post.author_id,
+    "Midia removida",
+    normalizedReason,
+    { post_id: post.id, reason: normalizedReason }
+  );
+
+  // Admin bypasses author_id check.
+  const { error } = await supabase
+    .from("posts")
+    .delete()
+    .eq("id", postId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard/admin/moderation");
+  return { success: true };
+}
+
+export async function submitMediaReviewAction(
+  postId: string,
+  actionType: MediaReviewAction,
+  message: string
+) {
+  if (actionType === "recommendation") {
+    return recommendCreatorForPost(postId, message);
+  }
+
+  if (actionType === "warning") {
+    return warnCreatorForPost(postId, message);
+  }
+
+  if (actionType === "removal") {
+    return forceDeletePost(postId, message);
+  }
+
+  return { error: "Acao de revisao invalida." };
 }
 
 export async function blockCreator(creatorId: string, reason = "3 advertencias acumuladas") {
@@ -250,7 +369,7 @@ export async function blockCreator(creatorId: string, reason = "3 advertencias a
   if (error) return { error: error.message };
 
   const emailStatus = await sendModerationEmail();
-  await supabase.from("moderation_actions").insert({
+  const actionError = await insertModerationAction(supabase, {
     action_type: "block",
     creator_id: creatorId,
     admin_user_id: adminUser?.id || user.id,
@@ -258,6 +377,8 @@ export async function blockCreator(creatorId: string, reason = "3 advertencias a
     reason,
     email_status: emailStatus,
   });
+
+  if (actionError) return { error: actionError.message };
 
   await createModerationNotification(
     supabase,

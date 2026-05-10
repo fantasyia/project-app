@@ -1,0 +1,12 @@
+{
+  "name": "Fantasyia",
+  "short_name": "Fantasyia",
+  "description": "Fantasyia app mobile-first para creators, users, afiliados e admin.",
+  "start_url": "/dashboard/user/feed",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": []
+}

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { FileText, Layers, PenLine } from "lucide-react";
+import { FantasyIALogo } from "@/components/ui/FantasyIALogo";
 
 export function MiniWordPressHeader({
-  eyebrow = "FantasyIA Editor",
   title,
   description,
 }: {
@@ -14,11 +14,8 @@ export function MiniWordPressHeader({
     <header className="border-b border-white/10 bg-[#1d1c24] px-5 py-4">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-white/15 bg-white/[0.04] text-xs font-bold text-cyan-300">
-            FIA
-          </div>
+          <FantasyIALogo href="/dashboard/blog" />
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-white/45">{eyebrow}</p>
             <h1 className="text-lg font-bold uppercase tracking-wide text-white">
               <span className="bg-gradient-to-r from-cyan-300 via-sky-300 to-orange-300 bg-clip-text text-transparent">
                 {title}

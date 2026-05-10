@@ -25,10 +25,35 @@
 }
 
 @layer base {
+  html {
+    min-height: 100%;
+    overflow-x: hidden;
+    background: #000;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    touch-action: pan-y;
+  }
+
   body {
+    min-height: 100dvh;
+    overflow-x: hidden;
     background-color: var(--color-brand-bg);
     color: var(--color-brand-text);
     -webkit-font-smoothing: antialiased;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: auto;
+    touch-action: pan-y;
+  }
+
+  * {
+    min-width: 0;
+  }
+
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
   }
 }
 
@@ -85,19 +110,48 @@
   }
 }
 
-/* App shell - full width on mobile, constrained on desktop */
+/* FantasyIA private app shell: vertical app frame from phone through tablet. */
 .app-shell {
+  --fantasyia-app-max-width: 820px;
   width: 100%;
+  max-width: var(--fantasyia-app-max-width);
   margin-left: auto;
   margin-right: auto;
-  min-height: 100vh;
+  min-height: 100dvh;
   position: relative;
   background-color: #000;
+  overflow-x: clip;
 }
 
-@media (min-width: 768px) {
-  .app-shell {
-    max-width: 768px;
+.fantasyia-app-frame {
+  --fantasyia-app-max-width: 820px;
+  width: 100%;
+  max-width: var(--fantasyia-app-max-width);
+  min-height: 100dvh;
+  margin-left: auto;
+  margin-right: auto;
+  position: relative;
+  background-color: #000;
+  overflow-x: clip;
+}
+
+.fantasyia-bottom-frame {
+  width: 100%;
+  max-width: 820px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.fantasyia-no-horizontal-scroll {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+@media (orientation: landscape) and (pointer: coarse) {
+  .app-shell,
+  .fantasyia-app-frame,
+  .fantasyia-bottom-frame {
+    max-width: min(820px, 100vw);
   }
 }
 

@@ -43,7 +43,7 @@ export async function PublicArticlePage({
   if (!article) return notFound();
 
   const stats = getArticleStats(article.content);
-  const widthClass = embedded ? "max-w-[768px]" : "max-w-5xl";
+  const widthClass = embedded ? "max-w-[820px]" : "max-w-5xl";
 
   return (
     <div className={embedded ? "bg-black text-white" : "min-h-screen bg-black text-white"}>

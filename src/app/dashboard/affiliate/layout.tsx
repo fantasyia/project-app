@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { Coins, LayoutDashboard, Link as LinkIcon, LogOut, Settings, Users } from "lucide-react";
 import { DashboardCascadeMenu } from "@/components/layouts/DashboardCascadeMenu";
+import { OperationalHeader } from "@/components/layouts/OperationalHeader";
 import { NotificationBell } from "@/components/ui/NotificationBell";
 import { PrivilegedRoleMenu } from "@/components/auth/PrivilegedRoleMenu";
 
@@ -14,14 +14,14 @@ const affiliateLinks = [
 
 export default async function AffiliateLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(0,168,107,0.12),transparent_34%),linear-gradient(180deg,#070908_0%,#030303_100%)] text-brand-text">
-      <div className="mx-auto min-h-screen w-full max-w-md border-x border-white/8 bg-black/30 shadow-[0_24px_90px_rgba(0,0,0,0.42)] md:max-w-[768px]">
+    <div className="flex min-h-dvh justify-center bg-[radial-gradient(circle_at_top_left,rgba(0,168,107,0.12),transparent_34%),linear-gradient(180deg,#070908_0%,#030303_100%)] text-brand-text">
+      <div className="app-shell flex flex-col border-x border-white/8 bg-black/30 shadow-[0_24px_90px_rgba(0,0,0,0.42)]">
         <header className="sticky top-0 z-40 border-b border-white/8 bg-black/75 backdrop-blur-xl">
-          <div className="flex items-center justify-between px-4 py-4">
-            <Link href="/dashboard/affiliate/overview" className="text-lg font-thin uppercase tracking-[0.2em] text-white">
-              Fantasy<span className="text-brand-500">ia</span>
-            </Link>
-            <div className="flex items-center gap-2">
+          <OperationalHeader
+            homeHref="/dashboard/affiliate/overview"
+            title="Afiliado"
+            actions={
+              <>
               <PrivilegedRoleMenu />
               <NotificationBell href="/dashboard/affiliate/notifications" />
               <form
@@ -39,24 +39,16 @@ export default async function AffiliateLayout({ children }: { children: React.Re
                   <LogOut size={16} strokeWidth={1.7} />
                 </button>
               </form>
-            </div>
-          </div>
-
-          <div className="px-4 pb-3">
-            <div className="rounded-3xl border border-brand-500/20 bg-brand-500/10 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-brand-300">Affiliate Portal</p>
-              <p className="mt-2 text-xs leading-5 text-brand-text-base">
-                Gestao mobile de links, cliques, conversoes e comissoes.
-              </p>
-            </div>
-          </div>
+              </>
+            }
+          />
 
           <div className="px-4 pb-4">
-            <DashboardCascadeMenu label="Menu do Affiliate Portal" triggerLabel="Affiliate Portal" items={affiliateLinks} />
+            <DashboardCascadeMenu label="Menu do Afiliado" triggerLabel="Afiliado" items={affiliateLinks} />
           </div>
         </header>
 
-        <main>{children}</main>
+        <main className="flex-1 fantasyia-no-horizontal-scroll">{children}</main>
       </div>
     </div>
   );

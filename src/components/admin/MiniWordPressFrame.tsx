@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FilePenLine, FolderTree, LayoutGrid } from "lucide-react";
+import { FantasyIALogo } from "@/components/ui/FantasyIALogo";
 
 function resolveHeaderCopy(pathname: string) {
   if (pathname.startsWith("/dashboard/blog/editor/")) {
@@ -79,15 +80,9 @@ function MiniWordPressHeader() {
             : "mx-auto flex h-[74px] max-w-[1800px] items-center justify-between gap-3 px-3 md:px-4"
         }
       >
-        <div className="min-w-0 flex items-center gap-2.5">
-          <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-(--border-strong) bg-[#2a2a30] text-sm font-black tracking-[0.03em] text-(--brand-hot) ${isEditorRoute ? "h-9 w-9 text-[12px]" : "h-11 w-11"}`}>
-            FIA
-          </div>
-
+        <div className="min-w-0 flex items-center gap-3">
+          <FantasyIALogo href="/dashboard/blog" className={isEditorRoute ? "text-base" : "text-lg"} />
           <div className="min-w-0">
-            {!isEditorRoute ? (
-              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-(--muted-2)">FantasyIA editor</p>
-            ) : null}
             <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
               <h1 className={`truncate font-semibold leading-none text-(--text) ${isEditorRoute ? "text-[0.92rem]" : "text-[1.05rem]"}`}>
                 {copy.title}

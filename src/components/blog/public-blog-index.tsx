@@ -26,7 +26,7 @@ export async function PublicBlogIndex({
         }));
   const [featuredArticle, ...otherArticles] = articles;
   const topArticles = otherArticles.slice(0, 6);
-  const widthClass = embedded ? "max-w-[768px]" : "max-w-6xl";
+  const widthClass = embedded ? "max-w-[820px]" : "max-w-6xl";
 
   return (
     <div className={embedded ? "bg-black text-white" : "min-h-screen bg-black text-white"}>

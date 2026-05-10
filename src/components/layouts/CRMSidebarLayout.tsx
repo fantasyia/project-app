@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LayoutDashboard, UserCheck, DollarSign, LogOut, Settings, Edit3 } from "lucide-react";
+import { FantasyIALogo } from "@/components/ui/FantasyIALogo";
 
 export default function CRMSidebarLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -7,9 +8,7 @@ export default function CRMSidebarLayout({ children }: { children: React.ReactNo
       {/* Sidebar Desktop Fixa */}
       <aside className="w-full md:w-64 bg-brand-surface-low border-r border-white/5 flex-col hidden md:flex h-screen sticky top-0">
         <div className="p-6 pb-8 border-b border-white/5">
-          <Link href="/dashboard" className="text-xl font-thin tracking-[0.2em] uppercase text-white">
-            Fantasy<span className="text-brand-500">ia</span>
-          </Link>
+          <FantasyIALogo href="/dashboard" className="text-xl" />
           <p className="text-[10px] font-semibold tracking-widest text-brand-text-muted uppercase mt-2">Operational</p>
         </div>
 

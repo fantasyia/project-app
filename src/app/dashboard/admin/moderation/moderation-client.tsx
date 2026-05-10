@@ -2,13 +2,17 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import Image from "next/image";
-import { blockCreator, forceDeletePost, warnCreatorForPost } from "@/lib/actions/admin";
+import { blockCreator, submitMediaReviewAction, type MediaReviewAction } from "@/lib/actions/admin";
 import { parsePostMediaAsset } from "@/lib/media/post-media";
-import { Ban, Grid3X3, List, Maximize, MoreVertical, ShieldAlert, Trash2, X } from "lucide-react";
+import { Ban, Grid3X3, List, Maximize, MoreVertical, Send, X } from "lucide-react";
 
 type Tier = "all" | "basic" | "premium" | "emerald" | "ppv";
 type ViewMode = "feed" | "grid";
 type StatusFilter = "all" | "visible" | "removed";
+type ReviewDraft = {
+  action: MediaReviewAction;
+  message: string;
+};
 
 type ModerationPost = {
   id: string;
@@ -42,6 +46,50 @@ const statusOptions: Array<{ value: StatusFilter; label: string }> = [
   { value: "visible", label: "Visivel" },
   { value: "removed", label: "Removido" },
 ];
+
+const defaultReviewDraft: ReviewDraft = {
+  action: "recommendation",
+  message: "",
+};
+
+const reviewActionOptions: Array<{ value: MediaReviewAction; label: string }> = [
+  { value: "recommendation", label: "Recomendar" },
+  { value: "warning", label: "Advertir creator" },
+  { value: "removal", label: "Remover midia" },
+];
+
+const reviewActionCopy: Record<
+  MediaReviewAction,
+  {
+    label: string;
+    placeholder: string;
+    button: string;
+    emptyMessage: string;
+    buttonClass: string;
+  }
+> = {
+  recommendation: {
+    label: "Recomendacao para o creator",
+    placeholder: "Escreva uma orientacao clara para ajustar este conteudo.",
+    button: "Enviar recomendacao",
+    emptyMessage: "Informe a recomendacao para o creator.",
+    buttonClass: "border-brand-500/20 bg-brand-500 text-black hover:bg-brand-400",
+  },
+  warning: {
+    label: "Motivo da advertencia",
+    placeholder: "Explique qual regra foi violada e o que precisa ser corrigido.",
+    button: "Advertir creator",
+    emptyMessage: "Informe o motivo da advertencia.",
+    buttonClass: "border-yellow-500/20 bg-yellow-500/15 text-yellow-100 hover:bg-yellow-500/25",
+  },
+  removal: {
+    label: "Motivo da remocao",
+    placeholder: "Explique por que esta midia sera removida.",
+    button: "Remover midia",
+    emptyMessage: "Informe o motivo da remocao.",
+    buttonClass: "border-red-500/20 bg-red-500/15 text-red-200 hover:bg-red-500/25",
+  },
+};
 
 function getTier(post: ModerationPost): Exclude<Tier, "all"> {
   if (post.content_tier === "emerald" || post.content_tier === "premium" || post.content_tier === "ppv") {
@@ -145,7 +193,7 @@ export function ModerationClient({ initialPosts }: { initialPosts: ModerationPos
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("feed");
   const [openReviewId, setOpenReviewId] = useState<string | null>(null);
-  const [reviewDrafts, setReviewDrafts] = useState<Record<string, { reason: string; recommendation: string }>>({});
+  const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDraft>>({});
   const [isPending, startTransition] = useTransition();
 
   const filteredPosts = useMemo(() => {
@@ -161,41 +209,62 @@ export function ModerationClient({ initialPosts }: { initialPosts: ModerationPos
     });
   }, [authorFilter, posts, statusFilter, tier]);
 
-  function handleDelete(postId: string) {
-    if (!confirm("Tem certeza que deseja remover este conteudo permanentemente do sistema?")) return;
+  function getReviewDraft(postId: string) {
+    return reviewDrafts[postId] || defaultReviewDraft;
+  }
 
-    startTransition(async () => {
-      const result = await forceDeletePost(postId);
-      if (result.success) {
-        setPosts((prev) => prev.filter((post) => post.id !== postId));
-      } else {
-        alert("Erro ao excluir: " + result.error);
-      }
+  function updateReviewDraft(postId: string, nextDraft: Partial<ReviewDraft>) {
+    setReviewDrafts((current) => ({
+      ...current,
+      [postId]: {
+        ...defaultReviewDraft,
+        ...current[postId],
+        ...nextDraft,
+      },
+    }));
+  }
+
+  function clearReviewDraft(postId: string) {
+    setReviewDrafts((current) => {
+      const next = { ...current };
+      delete next[postId];
+      return next;
     });
   }
 
-  function handleWarn(post: ModerationPost) {
-    const draft = reviewDrafts[post.id];
-    const reason = draft?.reason?.trim();
-    const recommendation = draft?.recommendation?.trim() || "";
-    if (!reason) {
-      alert("Informe o motivo da advertencia.");
+  function handleSubmitReview(post: ModerationPost) {
+    const draft = getReviewDraft(post.id);
+    const message = draft.message.trim();
+    const copy = reviewActionCopy[draft.action];
+
+    if (!message) {
+      alert(copy.emptyMessage);
       return;
     }
 
+    if (draft.action === "removal" && !confirm("Remover esta midia?")) return;
+
     startTransition(async () => {
-      const result = await warnCreatorForPost(post.id, reason, recommendation);
+      const result = await submitMediaReviewAction(post.id, draft.action, message);
       if (result.success) {
-        setPosts((prev) =>
-          prev.map((item) =>
-            item.author_id === post.author_id
-              ? { ...item, warning_count: (item.warning_count || 0) + 1 }
-              : item
-          )
-        );
+        if (draft.action === "warning") {
+          setPosts((prev) =>
+            prev.map((item) =>
+              item.author_id === post.author_id
+                ? { ...item, warning_count: (item.warning_count || 0) + 1 }
+                : item
+            )
+          );
+        }
+
+        if (draft.action === "removal") {
+          setPosts((prev) => prev.filter((item) => item.id !== post.id));
+        }
+
+        clearReviewDraft(post.id);
         setOpenReviewId(null);
       } else {
-        alert("Erro ao advertir: " + result.error);
+        alert("Erro ao enviar revisao: " + result.error);
       }
     });
   }
@@ -296,6 +365,8 @@ export function ModerationClient({ initialPosts }: { initialPosts: ModerationPos
           const canBlock = warningCount >= 3 && !post.creator_blocked;
           const isReviewOpen = openReviewId === post.id;
           const compact = viewMode === "grid";
+          const reviewDraft = getReviewDraft(post.id);
+          const actionCopy = reviewActionCopy[reviewDraft.action];
 
           return (
             <article key={post.id} className="group relative overflow-hidden rounded-[28px] border border-white/8 bg-black/30">
@@ -338,7 +409,7 @@ export function ModerationClient({ initialPosts }: { initialPosts: ModerationPos
                 </div>
 
                 {isReviewOpen ? (
-                  <div className="space-y-2 rounded-3xl border border-white/10 bg-white/[0.035] p-3">
+                  <div className="space-y-3 rounded-3xl border border-white/10 bg-white/[0.035] p-3">
                     <div className="flex items-center justify-between gap-3 text-xs text-brand-text-muted">
                       <span>Advertencias do creator</span>
                       <span className="rounded-full bg-white/[0.06] px-2 py-1 font-semibold text-white">
@@ -350,38 +421,51 @@ export function ModerationClient({ initialPosts }: { initialPosts: ModerationPos
                         Creator bloqueado
                       </p>
                     ) : null}
-                    <textarea
-                      value={reviewDrafts[post.id]?.reason || ""}
-                      onChange={(event) =>
-                        setReviewDrafts((current) => ({
-                          ...current,
-                          [post.id]: { reason: event.target.value, recommendation: current[post.id]?.recommendation || "" },
-                        }))
-                      }
-                      placeholder="Motivo da advertencia"
-                      rows={2}
-                      className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none placeholder:text-brand-text-muted/50 focus:border-brand-500/40"
-                    />
-                    <textarea
-                      value={reviewDrafts[post.id]?.recommendation || ""}
-                      onChange={(event) =>
-                        setReviewDrafts((current) => ({
-                          ...current,
-                          [post.id]: { reason: current[post.id]?.reason || "", recommendation: event.target.value },
-                        }))
-                      }
-                      placeholder="Recomendacao ou orientacao para o creator"
-                      rows={2}
-                      className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none placeholder:text-brand-text-muted/50 focus:border-brand-500/40"
-                    />
+
+                    <label className="block space-y-2">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.24em] text-brand-text-muted">
+                        Acao de revisao
+                      </span>
+                      <select
+                        value={reviewDraft.action}
+                        onChange={(event) =>
+                          updateReviewDraft(post.id, {
+                            action: event.target.value as MediaReviewAction,
+                            message: "",
+                          })
+                        }
+                        className="min-h-12 w-full rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-sm font-semibold text-white outline-none focus:border-brand-500/50"
+                      >
+                        {reviewActionOptions.map((option) => (
+                          <option key={option.value} value={option.value} className="bg-black text-white">
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block space-y-2">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.24em] text-brand-text-muted">
+                        {actionCopy.label}
+                      </span>
+                      <textarea
+                        value={reviewDraft.message}
+                        onChange={(event) => updateReviewDraft(post.id, { message: event.target.value })}
+                        placeholder={actionCopy.placeholder}
+                        rows={4}
+                        className="min-h-24 w-full resize-y rounded-2xl border border-white/10 bg-black/50 px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-brand-text-muted/50 focus:border-brand-500/40"
+                      />
+                    </label>
+
                     <button
                       type="button"
-                      onClick={() => handleWarn(post)}
+                      onClick={() => handleSubmitReview(post)}
                       disabled={isPending}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 py-3 text-xs font-bold uppercase tracking-widest text-yellow-200 transition-colors hover:bg-yellow-500/20 disabled:opacity-50"
+                      className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-xs font-bold uppercase tracking-widest transition-colors disabled:opacity-50 ${actionCopy.buttonClass}`}
                     >
-                      <ShieldAlert size={16} /> Advertir creator
+                      <Send size={16} /> {actionCopy.button}
                     </button>
+
                     {canBlock ? (
                       <button
                         type="button"
@@ -392,14 +476,6 @@ export function ModerationClient({ initialPosts }: { initialPosts: ModerationPos
                         <Ban size={16} /> Banir/Bloquear creator
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(post.id)}
-                      disabled={isPending}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 py-3 text-xs font-bold uppercase tracking-widest text-red-300 transition-colors hover:bg-red-500/20 disabled:opacity-50"
-                    >
-                      <Trash2 size={16} /> Remover midia
-                    </button>
                   </div>
                 ) : null}
               </div>

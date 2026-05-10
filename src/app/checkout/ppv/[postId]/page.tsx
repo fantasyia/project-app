@@ -34,8 +34,8 @@ export default async function PpvCheckoutPage({ params }: { params: Promise<{ po
 
   if (!checkout) {
     return (
-      <div className="min-h-screen bg-black px-6 py-16 text-white">
-        <div className="mx-auto max-w-md rounded-[32px] border border-white/10 bg-white/[0.03] p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+      <div className="flex min-h-dvh justify-center bg-black px-6 py-16 text-white">
+        <div className="w-full max-w-[820px] rounded-[32px] border border-white/10 bg-white/[0.03] p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
           <p className="text-[11px] uppercase tracking-[0.35em] text-brand-text-muted">PPV</p>
           <h1 className="mt-4 text-3xl font-light tracking-tight">Unlock indisponivel</h1>
           <p className="mt-3 text-sm leading-6 text-brand-text-muted">
@@ -61,8 +61,8 @@ export default async function PpvCheckoutPage({ params }: { params: Promise<{ po
   const mediaLabel = getMediaLabel(post.postType);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(0,168,107,0.2),_transparent_32%),linear-gradient(180deg,_#090c0a_0%,_#040404_52%,_#020202_100%)] text-white">
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-4 py-4">
+    <div className="flex min-h-dvh justify-center bg-[radial-gradient(circle_at_top,_rgba(0,168,107,0.2),_transparent_32%),linear-gradient(180deg,_#090c0a_0%,_#040404_52%,_#020202_100%)] text-white">
+      <div className="fantasyia-app-frame flex flex-col px-4 py-4">
         <header className="sticky top-0 z-40 mb-4 rounded-full border border-white/10 bg-black/55 px-4 py-3 backdrop-blur-xl">
           <div className="flex items-center justify-between gap-3">
             <Link
