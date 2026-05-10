@@ -116,12 +116,15 @@ export async function getGlobalFeedAudit() {
   }
 
   const creatorIds = Array.from(new Set((data || []).map((post) => post.author_id).filter(Boolean)));
-  const { data: warnings } = creatorIds.length > 0
+  const { data: warnings, error: warningsError } = creatorIds.length > 0
     ? await supabase
         .from("creator_warnings")
         .select("creator_id")
         .in("creator_id", creatorIds)
-    : { data: [] };
+    : { data: [], error: null };
+  if (warningsError && !isMissingSchemaError(warningsError)) {
+    console.error("getGlobalFeedAudit warnings error:", warningsError.message);
+  }
   const { data: profiles } = creatorIds.length > 0
     ? await supabase
         .from("creator_profiles")
@@ -158,6 +161,23 @@ async function createModerationNotification(
   });
 }
 
+type SupabaseSchemaError = {
+  code?: string;
+  message?: string;
+};
+
+function isMissingSchemaError(error: SupabaseSchemaError | null | undefined) {
+  const message = (error?.message || "").toLowerCase();
+
+  return (
+    error?.code === "42P01" ||
+    error?.code === "42703" ||
+    message.includes("schema cache") ||
+    message.includes("could not find the table") ||
+    (message.includes("could not find the") && message.includes("column"))
+  );
+}
+
 async function sendModerationEmail() {
   return "supabase_email_not_configured";
 }
@@ -188,20 +208,51 @@ async function insertModerationAction(
     email_status?: string;
   }
 ) {
-  const { error } = await supabase.from("moderation_actions").insert(payload);
-
-  if (!error || payload.action_type !== "removal") return error;
-
-  // Compatibility while older Supabase environments still lack the "removal" enum value.
-  const fallback = {
-    ...payload,
+  const compactPayload = {
+    action_type: payload.action_type,
+    creator_id: payload.creator_id,
+    post_id: payload.post_id || null,
+    reason: payload.reason,
+    recommendation: payload.recommendation || null,
+  };
+  const minimalPayload = {
+    action_type: payload.action_type,
+    creator_id: payload.creator_id,
+    post_id: payload.post_id || null,
+    reason: payload.reason,
+  };
+  const removalAsRecommendation = {
+    ...compactPayload,
     action_type: "recommendation" as const,
     recommendation: payload.recommendation
       ? `[remocao de midia] ${payload.recommendation}`
-      : "[remocao de midia]",
+      : `[remocao de midia] ${payload.reason}`,
   };
-  const { error: fallbackError } = await supabase.from("moderation_actions").insert(fallback);
-  return fallbackError;
+  const removalMinimalFallback = {
+    action_type: "recommendation" as const,
+    creator_id: payload.creator_id,
+    post_id: payload.post_id || null,
+    reason: `[remocao de midia] ${payload.reason}`,
+  };
+
+  const candidates =
+    payload.action_type === "removal"
+      ? [payload, compactPayload, minimalPayload, removalAsRecommendation, removalMinimalFallback]
+      : [payload, compactPayload, minimalPayload];
+
+  let lastSchemaError: SupabaseSchemaError | null = null;
+
+  for (const candidate of candidates) {
+    const { error } = await supabase.from("moderation_actions").insert(candidate);
+    if (!error) return null;
+    if (!isMissingSchemaError(error)) return error;
+    lastSchemaError = error;
+  }
+
+  if (lastSchemaError) {
+    console.warn("moderation_actions audit skipped:", lastSchemaError.message);
+  }
+  return null;
 }
 
 export async function recommendCreatorForPost(postId: string, recommendation: string) {
@@ -255,7 +306,10 @@ export async function warnCreatorForPost(postId: string, reason: string) {
     reason: normalizedReason,
   });
 
-  if (error) return { error: error.message };
+  if (error && !isMissingSchemaError(error)) return { error: error.message };
+  if (error) {
+    console.warn("creator_warnings insert skipped:", error.message);
+  }
 
   const emailStatus = await sendModerationEmail();
   const actionError = await insertModerationAction(supabase, {
@@ -347,10 +401,20 @@ export async function submitMediaReviewAction(
 export async function blockCreator(creatorId: string, reason = "3 advertencias acumuladas") {
   const { user, adminUser, supabase } = await requireRole("admin");
 
-  const { data: warnings } = await supabase
+  const { data: warnings, error: warningsError } = await supabase
     .from("creator_warnings")
     .select("id")
     .eq("creator_id", creatorId);
+
+  if (warningsError) {
+    if (isMissingSchemaError(warningsError)) {
+      return {
+        error:
+          "A tabela de advertencias ainda nao esta aplicada no Supabase. Aplique a migracao creator_warnings antes de bloquear creator por contador.",
+      };
+    }
+    return { error: warningsError.message };
+  }
 
   if ((warnings || []).length < 3) {
     return { error: "O creator precisa ter 3 advertencias antes do bloqueio." };
